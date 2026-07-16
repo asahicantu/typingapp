@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends.legacy:build"
+
+[project]
+name = "typingapp"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = ["textual>=0.80.0"]
+
+[project.scripts]
+typingtutor = "typingapp.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["typingapp*"]
+
+[tool.setuptools.package-data]
+"typingapp.engine.content" = ["*.txt"]
