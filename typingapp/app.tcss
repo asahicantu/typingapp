@@ -1,0 +1,67 @@
+Screen {
+    background: #0d0d0d;
+}
+
+.stat-label {
+    color: #888888;
+}
+
+.stat-value {
+    color: #ffffff;
+    text-style: bold;
+}
+
+.wpm-value { color: #f9c74f; }
+.acc-value { color: #90be6d; }
+.time-value { color: #43b0f1; }
+.err-value { color: #c77dff; }
+
+.hint-bar {
+    background: #1a1a2e;
+    border: tall #2a2a4e;
+    color: #43b0f1;
+    padding: 0 1;
+}
+
+.correct { color: #90be6d; }
+.error   { background: #ff6b6b; color: #ffffff; }
+.pending { color: #555555; }
+
+.menu-title {
+    color: #f9c74f;
+    text-style: bold;
+}
+
+#menu-box {
+    width: 40;
+    padding: 2 4;
+    border: tall #333333;
+}
+
+#menu-box Button {
+    width: 100%;
+    margin: 0 0 1 0;
+}
+
+.setting-row {
+    height: auto;
+    margin: 0 0 1 0;
+    align: left middle;
+}
+
+.setting-row Label {
+    width: 1fr;
+}
+
+#stats-bar {
+    height: 1;
+    margin: 0 0 1 0;
+}
+
+#text-display {
+    border: tall #333333;
+    padding: 1 2;
+    margin: 1 0;
+    height: auto;
+    min-height: 5;
+}
