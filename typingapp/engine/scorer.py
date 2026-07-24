@@ -76,3 +76,6 @@ class Scorer:
 
     def top_mistaken_words(self, limit: int = 5) -> list[tuple[str, int]]:
         return sorted(self.word_errors.items(), key=lambda kv: kv[1], reverse=True)[:limit]
+
+    def extend(self, more_text: str) -> None:
+        self.target += more_text
