@@ -66,9 +66,15 @@ Screen {
     height: auto;
     margin: 0 0 1 0;
     align: left middle;
+    width: 100%;
 }
 
 .setting-row Label {
+    width: 2fr;
+}
+
+.setting-row Switch,
+.setting-row Select {
     width: 1fr;
 }
 
