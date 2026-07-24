@@ -43,6 +43,13 @@ Screen {
     margin: 0 0 1 0;
 }
 
+.nav-hint {
+    color: #666666;
+    text-style: italic;
+    text-align: center;
+    width: 100%;
+}
+
 .setting-row {
     height: auto;
     margin: 0 0 1 0;

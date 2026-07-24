@@ -99,9 +99,14 @@ class LessonScreen(Screen):
         key = event.character
         if key is None or len(key) != 1:
             return
-        self._scorer.process_key(key)
+        correct = self._scorer.process_key(key)
         self._render_text()
         app = self.app          # type: ignore[attr-defined]
+        if app.config.key_sounds:
+            if correct:
+                app.sound.play_correct()
+            else:
+                app.sound.play_error()
         if app.config.show_hints:
             weak = app.adaptive.detect_weak_bigrams(self._scorer.keystrokes)
             if weak:

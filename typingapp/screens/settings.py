@@ -47,10 +47,18 @@ class SettingsScreen(Screen):
             with Horizontal(classes="setting-row"):
                 yield Label("Show adaptive hints")
                 yield Switch(value=cfg.show_hints, id="sw-hints")
+            with Horizontal(classes="setting-row"):
+                yield Label("Key sounds")
+                yield Switch(value=cfg.key_sounds, id="sw-sound")
             yield Static("")
 
             yield Button("💾  Save & Back", id="btn-save", variant="primary")
             yield Button("✕  Cancel", id="btn-cancel")
+
+    def on_switch_changed(self, event: Switch.Changed) -> None:
+        if event.switch.id == "sw-sound" and event.value:
+            app = self.app          # type: ignore[attr-defined]
+            app.sound.play_correct()
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-save":
@@ -58,6 +66,7 @@ class SettingsScreen(Screen):
             cfg.strict_mode = self.query_one("#sw-strict", Switch).value
             cfg.show_live_wpm = self.query_one("#sw-wpm", Switch).value
             cfg.show_hints = self.query_one("#sw-hints", Switch).value
+            cfg.key_sounds = self.query_one("#sw-sound", Switch).value
             sel_content = self.query_one("#sel-content", Select)
             if sel_content.value != Select.BLANK:
                 cfg.content_type = sel_content.value

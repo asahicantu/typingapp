@@ -5,6 +5,7 @@ from typingapp.config import load_config, AppConfig
 from typingapp.data.storage import Storage
 from typingapp.engine.lesson import LessonEngine
 from typingapp.engine.adaptive import AdaptiveEngine
+from typingapp.engine.sound import SoundPlayer
 
 
 class TypingApp(App):
@@ -19,6 +20,7 @@ class TypingApp(App):
         self.adaptive: AdaptiveEngine = AdaptiveEngine(
             current_level=self.config.difficulty if self.config.difficulty > 0 else 1
         )
+        self.sound: SoundPlayer = SoundPlayer()
 
     def on_mount(self) -> None:
         from typingapp.screens.menu import MenuScreen

@@ -12,6 +12,7 @@ def test_default_config():
     assert cfg.difficulty == 0
     assert cfg.show_live_wpm is True
     assert cfg.show_hints is True
+    assert cfg.key_sounds is True
 
 
 def test_save_and_load_roundtrip(tmp_path):
