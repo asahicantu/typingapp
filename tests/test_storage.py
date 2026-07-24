@@ -64,3 +64,46 @@ def test_fetch_recent_sessions_limit(tmp_path):
     sessions = s.fetch_recent_sessions(limit=3)
     assert len(sessions) == 3
     s.close()
+
+
+def test_cache_excerpt_and_fetch(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    excerpt_id = s.cache_excerpt(
+        gutenberg_id=1342, title="Pride and Prejudice", author="Jane Austen",
+        language="en", excerpt="It is a truth universally acknowledged...",
+        fetched_at="2026-07-24T10:00:00",
+    )
+    assert excerpt_id > 0
+    cached = s.fetch_cached_excerpts(language="en", limit=10)
+    assert len(cached) == 1
+    assert cached[0]["title"] == "Pride and Prejudice"
+    assert cached[0]["gutenberg_id"] == 1342
+    s.close()
+
+
+def test_fetch_cached_excerpts_filters_by_language(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.cache_excerpt(gutenberg_id=1, title="A", author="X", language="en",
+                     excerpt="text", fetched_at="2026-07-24T10:00:00")
+    s.cache_excerpt(gutenberg_id=2, title="B", author="Y", language="es",
+                     excerpt="texto", fetched_at="2026-07-24T10:00:00")
+    en_only = s.fetch_cached_excerpts(language="en", limit=10)
+    assert len(en_only) == 1
+    assert en_only[0]["title"] == "A"
+    s.close()
+
+
+def test_prune_old_excerpts_keeps_only_n_most_recent(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    for i in range(5):
+        s.cache_excerpt(
+            gutenberg_id=i, title=f"Book{i}", author="X", language="en",
+            excerpt="text", fetched_at=f"2026-07-{i+1:02d}T10:00:00",
+        )
+    s.prune_old_excerpts(language="en", keep=2)
+    remaining = s.fetch_cached_excerpts(language="en", limit=10)
+    assert len(remaining) == 2
+    # keeps the most recently fetched
+    titles = {r["title"] for r in remaining}
+    assert titles == {"Book3", "Book4"}
+    s.close()
