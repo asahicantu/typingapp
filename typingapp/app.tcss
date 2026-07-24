@@ -44,6 +44,23 @@ Screen {
     margin: 0 0 1 0;
 }
 
+#results-cards {
+    height: auto;
+    max-height: 20;
+}
+
+.result-card {
+    width: 1fr;
+    height: 20;
+    border: round #333333;
+    padding: 1 2;
+    margin: 0 1 0 0;
+}
+
+.result-card:focus {
+    border: round #43b0f1;
+}
+
 #menu-box {
     width: 40;
     padding: 2 4;
