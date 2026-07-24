@@ -83,10 +83,14 @@ Screen {
     margin: 0 0 1 0;
 }
 
-#text-display {
+#text-scroll {
     border: tall #333333;
     padding: 1 2;
     margin: 1 0;
+    height: 1fr;
+    max-height: 60%;
+}
+
+#text-display {
     height: auto;
-    min-height: 5;
 }
