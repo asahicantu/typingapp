@@ -32,6 +32,18 @@ Screen {
     text-style: bold;
 }
 
+.section-title {
+    color: #43b0f1;
+    text-style: bold;
+    margin: 1 0 0 0;
+}
+
+.section-desc {
+    color: #888888;
+    text-style: italic;
+    margin: 0 0 1 0;
+}
+
 #menu-box {
     width: 40;
     padding: 2 4;

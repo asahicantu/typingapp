@@ -16,6 +16,7 @@ class LessonScreen(Screen):
         ("escape", "pause", "Pause"),
         ("ctrl+r", "restart", "Restart"),
         ("ctrl+q", "quit_lesson", "Quit"),
+        ("ctrl+e", "go_menu", "Main Menu"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -53,7 +54,7 @@ class LessonScreen(Screen):
             yield ProgressBar(total=100, show_eta=False, id="progress-bar")
             yield Static("", id="text-display")
             yield Label("", id="hint-bar", classes="hint-bar")
-            yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit", classes="stat-label")
+            yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu", classes="stat-label")
 
     def on_mount(self) -> None:
         self._start_lesson()
@@ -154,3 +155,9 @@ class LessonScreen(Screen):
         if self._timer:
             self._timer.stop()
         self.app.pop_screen()
+
+    def action_go_menu(self) -> None:
+        if self._timer:
+            self._timer.stop()
+        from typingapp.screens.menu import MenuScreen
+        self.app.switch_screen(MenuScreen())

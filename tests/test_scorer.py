@@ -70,3 +70,52 @@ def test_wpm_nonzero_after_typing(monkeypatch):
     for ch in "the quick":
         s.process_key(ch)
     assert s.wpm > 0
+
+
+def test_word_error_attributed_to_correct_word():
+    s = Scorer("cat dog", strict_mode=False)
+    s.start()
+    for ch in "cat ":
+        s.process_key(ch)
+    s.process_key("x")  # wrong 'd' in "dog"
+    s.process_key("o")
+    s.process_key("g")
+    assert s.word_errors == {"dog": 1}
+
+
+def test_word_error_attributed_to_first_word():
+    s = Scorer("cat dog", strict_mode=False)
+    s.start()
+    s.process_key("x")  # wrong 'c' in "cat"
+    assert s.word_errors == {"cat": 1}
+
+
+def test_multiple_errors_same_word_accumulate():
+    s = Scorer("hello", strict_mode=False)
+    s.start()
+    s.process_key("x")
+    s.process_key("y")
+    s.process_key("l")
+    s.process_key("l")
+    s.process_key("o")
+    assert s.word_errors == {"hello": 2}
+
+
+def test_top_mistaken_words_sorted_desc():
+    s = Scorer("aa bb bb cc cc cc", strict_mode=False)
+    s.start()
+    for ch in s.target:
+        s.process_key("!" if ch != " " else " ")
+    top = s.top_mistaken_words(limit=2)
+    # "cc" occurs 3x (6 char-errors), "bb" occurs 2x (4 char-errors), "aa" once (2 char-errors)
+    assert top[0] == ("cc", 6)
+    assert top[1] == ("bb", 4)
+
+
+def test_strict_mode_retries_count_once_per_error():
+    s = Scorer("hi", strict_mode=True)
+    s.start()
+    s.process_key("x")
+    s.process_key("x")
+    s.process_key("h")
+    assert s.word_errors == {"hi": 2}

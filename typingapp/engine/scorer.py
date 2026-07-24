@@ -12,6 +12,7 @@ class Scorer:
     position: int = field(default=0, init=False)
     error_count: int = field(default=0, init=False)
     keystrokes: list[KeystrokeRecord] = field(default_factory=list, init=False)
+    word_errors: dict[str, int] = field(default_factory=dict, init=False)
     _start_time: float = field(default=0.0, init=False)
     _total_keys: int = field(default=0, init=False)
     _correct_keys: int = field(default=0, init=False)
@@ -59,6 +60,19 @@ class Scorer:
             self.position += 1
         else:
             self.error_count += 1
+            word = self._word_at(self.position)
+            if word:
+                self.word_errors[word] = self.word_errors.get(word, 0) + 1
             if not self.strict_mode:
                 self.position += 1
         return correct
+
+    def _word_at(self, index: int) -> str:
+        start = self.target.rfind(" ", 0, index) + 1
+        end = self.target.find(" ", index)
+        if end == -1:
+            end = len(self.target)
+        return self.target[start:end]
+
+    def top_mistaken_words(self, limit: int = 5) -> list[tuple[str, int]]:
+        return sorted(self.word_errors.items(), key=lambda kv: kv[1], reverse=True)[:limit]
