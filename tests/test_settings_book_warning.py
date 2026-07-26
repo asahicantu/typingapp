@@ -1,7 +1,7 @@
 from types import SimpleNamespace
 
 from typingapp.config import AppConfig
-from typingapp.screens.settings import _book_mismatch_warning
+from typingapp.screens.settings import _book_mismatch_warning, _epub_folder_status
 
 
 def _fake_app(config):
@@ -31,3 +31,23 @@ def test_warning_reflects_the_passed_content_type_not_saved_config():
     app = _fake_app(AppConfig(content_type="literature", selected_book_id="gutenberg:1"))
     warning = _book_mismatch_warning(app, "code")
     assert "Code" in warning
+
+
+def test_epub_folder_status_blank_when_no_folder_configured():
+    assert _epub_folder_status("") == ""
+
+
+def test_epub_folder_status_warns_when_folder_has_no_epub_files(tmp_path):
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    status = _epub_folder_status(str(empty_dir))
+    assert status.startswith("⚠")
+    assert "No .epub files found" in status
+
+
+def test_epub_folder_status_ok_when_epub_files_present(tmp_path):
+    from tests.test_epub_source import _write_epub
+    _write_epub(tmp_path / "book.epub")
+    status = _epub_folder_status(str(tmp_path))
+    assert status.startswith("✓")
+    assert "1 EPUB file" in status

@@ -147,3 +147,42 @@ def page_info(total_chars: int, current_offset: int) -> tuple[int, int, float]:
     total_pages = max(1, math.ceil(total_chars / CHARS_PER_PAGE))
     pct = (current_offset / total_chars) * 100
     return page, total_pages, pct
+
+
+def fetch_book_text(result: dict) -> str | None:
+    """Fetch and normalize a book's full text from a BookSearchScreen result dict
+    (source-agnostic: Gutenberg 'text_url' or local EPUB 'path'). Returns None on
+    any failure — never raises, matching the never-raise contract of gutenberg.py
+    and epub_source.py that this delegates to."""
+    from typingapp.engine.gutenberg import BookMeta, fetch_full_text
+    from typingapp.engine.epub_source import parse_epub, epub_to_flat_text
+
+    if result["source"] == "epub":
+        nodes = parse_epub(result["path"])
+        if nodes is None:
+            return None
+        return epub_to_flat_text(nodes)
+    book = BookMeta(
+        gutenberg_id=int(result["book_id"].split(":", 1)[1]),
+        title=result["title"], author=result["author"], text_url=result["text_url"],
+    )
+    raw = fetch_full_text(book)
+    return normalize_gutenberg_text(raw) if raw is not None else None
+
+
+def fetch_and_cache_book(storage, language: str, result: dict, now_iso: str) -> bool:
+    """Ensure `result` is cached in the books table (fetching it first if not already
+    cached), so its book_id is ready to read. Returns False (and leaves storage
+    untouched) if the fetch failed; True if the book is cached (whether freshly
+    fetched or already present)."""
+    book_id = result["book_id"]
+    if storage.get_book(book_id) is not None:
+        return True
+    full_text = fetch_book_text(result)
+    if full_text is None:
+        return False
+    storage.upsert_book(
+        book_id=book_id, source=result["source"], title=result["title"], author=result["author"],
+        language=language, full_text=full_text, cached_at=now_iso,
+    )
+    return True

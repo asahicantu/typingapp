@@ -27,6 +27,7 @@ class LessonScreen(Screen):
         ("ctrl+r", "restart", "Restart"),
         ("ctrl+q", "quit_lesson", "Quit"),
         ("ctrl+e", "go_menu", "Main Menu"),
+        ("ctrl+f", "finish_session", "Finish Session"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -80,7 +81,7 @@ class LessonScreen(Screen):
             with VerticalScroll(id="text-scroll"):
                 yield Static("", id="text-display")
             yield Label("", id="hint-bar", classes="hint-bar")
-            yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu", classes="stat-label")
+            yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu", id="footer-hint", classes="stat-label")
 
     def on_mount(self) -> None:
         self._start_lesson()
@@ -116,6 +117,11 @@ class LessonScreen(Screen):
         self._render_text()
         self._timer = self.set_interval(0.25, self._tick)
         self._update_book_progress_label()
+        footer = self.query_one("#footer-hint", Static)
+        if self._book_id:
+            footer.update("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  Ctrl+Q quit  ·  Ctrl+E menu")
+        else:
+            footer.update("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         reason = app.lesson_engine.last_fallback_reason
         if reason:
             self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
@@ -173,46 +179,62 @@ class LessonScreen(Screen):
         if s is None:
             return
         cfg = app.config
-        time_remaining = cfg.session_duration - s.elapsed_seconds
         chars_remaining = len(s.target) - s.position
         near_end = chars_remaining <= max(20, len(s.target) * 0.15)
-        if near_end and time_remaining > 5 and cfg.content_type in ("literature", "random_sentences"):
+        if not near_end or cfg.content_type not in ("literature", "random_sentences"):
+            return
+
+        # Book mode is open-ended (the user decides when to stop, not a fixed session
+        # duration), so it always tops up more text near the end regardless of the
+        # configured session_duration. Non-book literature/random-sentences extension
+        # still respects the session clock and stops topping up once time's nearly up.
+        if self._book_id:
+            time_budget = cfg.session_duration
+        else:
+            time_remaining = cfg.session_duration - s.elapsed_seconds
+            if time_remaining <= 5:
+                return
+            time_budget = max(int(time_remaining), 15)
+
+        if self._book_id:
+            # keep the book's stored offset in sync with what's already been fetched (end of
+            # target, not just what's been typed) so the next chunk continues contiguously
+            app.storage.update_book_progress(
+                self._book_id, self._book_raw_offset(len(s.target)),
+                datetime.datetime.now().isoformat(),
+            )
+        try:
+            more_text = app.lesson_engine.get_lesson(
+                content_type=cfg.content_type,
+                difficulty=app.adaptive.current_level,
+                language=cfg.language,
+                storage=app.storage,
+                recent_wpm=s.wpm,
+                session_duration=time_budget,
+                selected_book_id=cfg.selected_book_id,
+            )
+        except Exception:
+            more_text = ""
+        reason = app.lesson_engine.last_fallback_reason
+        if reason:
+            self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
+        if more_text == BOOK_COMPLETE_SENTINEL:
+            self.query_one("#hint-bar", Label).update("🎉 You've reached the end of this book!")
+            return
+        if more_text:
             if self._book_id:
-                # keep the book's stored offset in sync with what's already been fetched (end of
-                # target, not just what's been typed) so the next chunk continues contiguously
-                app.storage.update_book_progress(
-                    self._book_id, self._book_raw_offset(len(s.target)),
-                    datetime.datetime.now().isoformat(),
+                # book-mode chunks continue at an exact character offset in the book's text,
+                # so no separator is inserted; strip '# ' markers the same way _start_lesson
+                # does, offsetting the new spans past the text already in the target
+                more_stripped, more_spans = strip_heading_markup(more_text)
+                base = len(s.target)
+                self._book_chunk_spans.extend(
+                    (kind, base + start, base + end) for kind, start, end in more_spans
                 )
-            try:
-                more_text = app.lesson_engine.get_lesson(
-                    content_type=cfg.content_type,
-                    difficulty=app.adaptive.current_level,
-                    language=cfg.language,
-                    storage=app.storage,
-                    recent_wpm=s.wpm,
-                    session_duration=max(int(time_remaining), 15),
-                    selected_book_id=cfg.selected_book_id,
-                )
-            except Exception:
-                more_text = ""
-            reason = app.lesson_engine.last_fallback_reason
-            if reason:
-                self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
-            if more_text and more_text != BOOK_COMPLETE_SENTINEL:
-                if self._book_id:
-                    # book-mode chunks continue at an exact character offset in the book's text,
-                    # so no separator is inserted; strip '# ' markers the same way _start_lesson
-                    # does, offsetting the new spans past the text already in the target
-                    more_stripped, more_spans = strip_heading_markup(more_text)
-                    base = len(s.target)
-                    self._book_chunk_spans.extend(
-                        (kind, base + start, base + end) for kind, start, end in more_spans
-                    )
-                    s.extend(more_stripped)
-                else:
-                    # non-book modes join separate excerpts with a space
-                    s.extend(" " + more_text)
+                s.extend(more_stripped)
+            else:
+                # non-book modes join separate excerpts with a space
+                s.extend(" " + more_text)
 
     def _render_text(self) -> None:
         if self._scorer is None:
@@ -329,7 +351,16 @@ class LessonScreen(Screen):
             else:
                 self.query_one("#hint-bar", Label).update("")
         if self._scorer.is_complete:
-            self._finish()
+            if self._book_id:
+                # Book mode is open-ended by design: reaching the end of the current chunk
+                # just means _tick()'s _maybe_extend_text will fetch the next one on the
+                # next tick — the user decides when to stop via Ctrl+F/Ctrl+Q/Ctrl+E. Persist
+                # progress right away rather than waiting on the periodic tick timer, so it's
+                # never stale even if the user quits before the next tick fires.
+                self._persist_book_progress()
+            else:
+                # Non-book lessons are a fixed amount of text — finishing it ends the session.
+                self._finish()
 
     def _finish(self) -> None:
         if self._timer:
@@ -355,7 +386,7 @@ class LessonScreen(Screen):
         session_id = app.storage.insert_session(rec)
         app.storage.insert_keystrokes(session_id, s.keystrokes)
         from typingapp.screens.results import ResultsScreen
-        self.app.switch_screen(ResultsScreen(scorer=s, session_id=session_id))
+        self.app.switch_screen(ResultsScreen(scorer=s, session_id=session_id, book_id=self._book_id))
 
     def action_pause(self) -> None:
         self._paused = not self._paused
@@ -372,6 +403,13 @@ class LessonScreen(Screen):
             self._timer.stop()
         self._persist_book_progress()
         self.app.pop_screen()
+
+    def action_finish_session(self) -> None:
+        # Book mode never auto-finishes on chunk completion (see on_key) — this is the
+        # explicit "I'm done for now" action. A no-op outside book mode: non-book lessons
+        # already finish themselves when the fixed amount of text is fully typed.
+        if self._book_id and self._scorer is not None:
+            self._finish()
 
     def action_go_menu(self) -> None:
         if self._timer:

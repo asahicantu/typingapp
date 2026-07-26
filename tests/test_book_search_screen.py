@@ -44,7 +44,7 @@ def test_selecting_first_search_result_immediately_pins_book(tmp_path):
 
     async def run():
         with patch("typingapp.screens.book_search.search_books", return_value=[book]), \
-             patch("typingapp.screens.settings.fetch_full_text", return_value="Some book text here."):
+             patch("typingapp.engine.gutenberg.fetch_full_text", return_value="Some book text here."):
             async with app.run_test() as pilot:
                 await pilot.pause()
                 app.screen.query_one("#btn-browse-books").press()

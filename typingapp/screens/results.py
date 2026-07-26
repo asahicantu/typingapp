@@ -6,6 +6,7 @@ from textual.containers import ScrollableContainer, Horizontal, VerticalScroll
 
 from typingapp.engine.scorer import Scorer
 from typingapp.engine.charts import horizontal_bar, ranked_bars
+from typingapp.engine.book_text import page_info
 
 
 def _accuracy_color(accuracy: float) -> str:
@@ -17,6 +18,10 @@ def _accuracy_color(accuracy: float) -> str:
 
 
 class ResultsScreen(Screen):
+    # Static superset covering both book-mode and regular-lesson shortcuts — Screen resolves
+    # its active key bindings from the CLASS-level BINDINGS at class-definition time (before
+    # any instance exists), so per-instance bindings can't vary the *set* of active keys; the
+    # corresponding action_* methods below no-op when the current session doesn't apply to them.
     BINDINGS = [
         ("escape", "go_menu", "Menu"),
         ("p", "jump_performance", "Performance"),
@@ -24,16 +29,19 @@ class ResultsScreen(Screen):
         ("w", "jump_words", "Words"),
         ("right", "focus_next_card", "Next Card"),
         ("left", "focus_previous_card", "Previous Card"),
-        ("r", "retry_same", "Retry Same"),
-        ("n", "new_lesson", "New Lesson"),
         ("h", "view_history", "History"),
         ("m", "go_menu", "Menu"),
+        ("r", "retry_same", "Retry Same"),
+        ("n", "new_lesson", "New Lesson"),
+        ("c", "continue_book", "Continue Book"),
+        ("l", "open_library", "My Books"),
     ]
 
-    def __init__(self, scorer: Scorer, session_id: int) -> None:
+    def __init__(self, scorer: Scorer, session_id: int, book_id: str = "") -> None:
         super().__init__()
         self._scorer = scorer
         self._session_id = session_id
+        self._book_id = book_id
 
     def compose(self) -> ComposeResult:
         s = self._scorer
@@ -87,12 +95,40 @@ class ResultsScreen(Screen):
                         yield Static("The words that caused the most keystroke errors this session.", classes="section-desc")
                         yield Static(ranked_bars(mistaken_words), id="word-chart")
 
+                if self._book_id:
+                    with VerticalScroll(id="section-book", classes="result-card", can_focus=True):
+                        yield Static("BOOK PROGRESS", classes="section-title")
+                        yield Static(self._book_progress_text(), classes="section-desc")
+                        yield Static(self._book_progress_bar(), id="book-progress-chart")
+
             yield Static("")
             with Horizontal(id="results-commands"):
-                yield Static("[R] Retry Same", classes="command-item")
-                yield Static("[N] New Lesson", classes="command-item")
+                if self._book_id:
+                    yield Static("[C] Continue Book", classes="command-item")
+                    yield Static("[L] My Books", classes="command-item")
+                else:
+                    yield Static("[R] Retry Same", classes="command-item")
+                    yield Static("[N] New Lesson", classes="command-item")
                 yield Static("[H] History", classes="command-item")
                 yield Static("[Esc/M] Menu", classes="command-item")
+
+    def _book_progress_text(self) -> str:
+        app = self.app       # type: ignore[attr-defined]
+        book = app.storage.get_book(self._book_id)
+        if book is None:
+            return "This book is no longer in your library."
+        offset = app.storage.fetch_book_progress(self._book_id)
+        page, total_pages, pct = page_info(book["total_chars"], offset)
+        return f"{book['title']} — {book['author']}  ·  page {page}/{total_pages}"
+
+    def _book_progress_bar(self) -> str:
+        app = self.app       # type: ignore[attr-defined]
+        book = app.storage.get_book(self._book_id)
+        if book is None:
+            return ""
+        offset = app.storage.fetch_book_progress(self._book_id)
+        _, _, pct = page_info(book["total_chars"], offset)
+        return horizontal_bar("Progress", pct, 100.0, value_fmt="{:.0f}%", color="cyan")
 
     def _session_mistake_bigrams(self, limit: int = 5) -> list[tuple[str, int]]:
         counts: dict[str, int] = {}
@@ -106,12 +142,28 @@ class ResultsScreen(Screen):
         self.app.switch_screen(MenuScreen())
 
     def action_retry_same(self) -> None:
+        if self._book_id:
+            return  # book sessions use Continue Book (C) / My Books (L) instead
         from typingapp.screens.lesson import LessonScreen
         self.app.switch_screen(LessonScreen())
 
     def action_new_lesson(self) -> None:
+        if self._book_id:
+            return
         from typingapp.screens.lesson import LessonScreen
         self.app.switch_screen(LessonScreen())
+
+    def action_continue_book(self) -> None:
+        if not self._book_id:
+            return  # non-book sessions use Retry Same (R) / New Lesson (N) instead
+        from typingapp.screens.lesson import LessonScreen
+        self.app.switch_screen(LessonScreen())
+
+    def action_open_library(self) -> None:
+        if not self._book_id:
+            return
+        from typingapp.screens.library import LibraryScreen
+        self.app.switch_screen(LibraryScreen())
 
     def action_view_history(self) -> None:
         from typingapp.screens.history import HistoryScreen

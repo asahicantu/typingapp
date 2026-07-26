@@ -26,7 +26,8 @@ class MenuScreen(Screen):
         ("1", "jump_start", "Start Lesson"),
         ("2", "jump_history", "History"),
         ("3", "jump_settings", "Settings"),
-        ("4", "quit", "Quit"),
+        ("4", "jump_library", "My Books"),
+        ("5", "quit", "Quit"),
     ]
 
     def compose(self) -> ComposeResult:
@@ -40,11 +41,12 @@ class MenuScreen(Screen):
                     yield Button("1  ▶  Start Lesson", id="btn-start", variant="primary")
                     yield Button("2  📊  History & Progress", id="btn-history")
                     yield Button("3  ⚙  Settings", id="btn-settings")
-                    yield Button("4  ✕  Quit", id="btn-quit", variant="error")
+                    yield Button("4  📚  My Books", id="btn-library")
+                    yield Button("5  ✕  Quit", id="btn-quit", variant="error")
                     yield Static("", classes="spacer")
                     yield Label("", id="last-session-label", classes="stat-label")
                     yield Static(
-                        "↑↓/Tab move · Enter select · 1-4 jump · Q quit",
+                        "↑↓/Tab move · Enter select · 1-5 jump · Q quit",
                         classes="nav-hint",
                     )
 
@@ -74,6 +76,8 @@ class MenuScreen(Screen):
             self._open_history()
         elif event.button.id == "btn-settings":
             self._open_settings()
+        elif event.button.id == "btn-library":
+            self._open_library()
         elif event.button.id == "btn-quit":
             self.app.exit()
 
@@ -98,6 +102,10 @@ class MenuScreen(Screen):
         from typingapp.screens.settings import SettingsScreen
         self.app.push_screen(SettingsScreen())
 
+    def _open_library(self) -> None:
+        from typingapp.screens.library import LibraryScreen
+        self.app.push_screen(LibraryScreen())
+
     def action_quit(self) -> None:
         self.app.exit()
 
@@ -109,3 +117,6 @@ class MenuScreen(Screen):
 
     def action_jump_settings(self) -> None:
         self._open_settings()
+
+    def action_jump_library(self) -> None:
+        self._open_library()

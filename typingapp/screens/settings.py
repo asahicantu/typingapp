@@ -5,9 +5,8 @@ from textual.screen import Screen
 from textual.widgets import Static, Button, Switch, Select, Label, Input
 from textual.containers import Vertical, Horizontal, ScrollableContainer
 from typingapp.config import save_config
-from typingapp.engine.book_text import page_info, normalize_gutenberg_text, CONTENT_TYPE_LABELS
-from typingapp.engine.gutenberg import BookMeta, fetch_full_text
-from typingapp.engine.epub_source import parse_epub, epub_to_flat_text
+from typingapp.engine.book_text import page_info, CONTENT_TYPE_LABELS, fetch_and_cache_book
+from typingapp.engine.epub_source import scan_epub_folder
 
 
 def _book_display_text(app) -> str:
@@ -27,6 +26,15 @@ def _book_mismatch_warning(app, content_type: str) -> str:
         label = CONTENT_TYPE_LABELS.get(content_type, content_type)
         return f'⚠ Content type is "{label}" — switch to "Literature" to read this book'
     return ""
+
+
+def _epub_folder_status(folder: str) -> str:
+    if not folder:
+        return ""
+    books = scan_epub_folder(folder)
+    if not books:
+        return f"⚠ No .epub files found in {folder}"
+    return f"✓ {len(books)} EPUB file(s) found"
 
 
 class SettingsScreen(Screen):
@@ -93,17 +101,24 @@ class SettingsScreen(Screen):
                 )
             yield Static("")
 
-            yield Static("BOOKS  (applies only when Content type = Literature)", classes="stat-label")
+            yield Static("📖  E-BOOK READING  (applies when Content type = Literature)", classes="stat-label")
+            yield Static(
+                "Search Project Gutenberg or import from a local folder — pick one book "
+                "to read from start to finish, one typing session at a time.",
+                classes="section-desc",
+            )
             with Horizontal(classes="setting-row"):
                 yield Label("Local EPUB folder")
                 yield Input(value=cfg.epub_folder, placeholder="/path/to/epub/folder", id="input-epub-folder")
+            yield Static(_epub_folder_status(cfg.epub_folder), id="epub-folder-status", classes="stat-label")
             with Horizontal(classes="setting-row"):
-                yield Label("Selected book")
+                yield Label("Currently reading")
                 yield Static(_book_display_text(self.app), id="selected-book-val")
             yield Static(_book_mismatch_warning(self.app, cfg.content_type), id="book-mismatch-warning", classes="stat-label")
             with Horizontal(classes="setting-row"):
-                yield Button("📚  Browse Books", id="btn-browse-books")
-                yield Button("✕  Clear Selection", id="btn-clear-book")
+                yield Button("🔎  Find a New Book", id="btn-browse-books", variant="primary")
+                yield Button("📚  My Books", id="btn-open-library")
+                yield Button("✕  Stop Reading This Book", id="btn-clear-book")
             yield Static("")
 
             yield Static("DISPLAY", classes="stat-label")
@@ -129,6 +144,17 @@ class SettingsScreen(Screen):
     def on_select_changed(self, event: Select.Changed) -> None:
         if event.select.id == "sel-content" and event.value != Select.BLANK:
             self._refresh_book_mismatch_warning(event.value)
+
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id == "input-epub-folder":
+            self.query_one("#epub-folder-status", Static).update(_epub_folder_status(event.value))
+
+    def on_screen_resume(self) -> None:
+        # My Books may have changed the currently-reading book while this screen was
+        # suspended underneath it — on_mount only fires once, on_show doesn't re-fire on resume.
+        app = self.app       # type: ignore[attr-defined]
+        self.query_one("#selected-book-val", Static).update(_book_display_text(app))
+        self._refresh_book_mismatch_warning(self.query_one("#sel-content", Select).value)
 
     def _refresh_book_mismatch_warning(self, content_type: str) -> None:
         self.query_one("#book-mismatch-warning", Static).update(
@@ -166,6 +192,9 @@ class SettingsScreen(Screen):
         elif event.button.id == "btn-browse-books":
             from typingapp.screens.book_search import BookSearchScreen
             self.app.push_screen(BookSearchScreen(on_select=self._pin_book))
+        elif event.button.id == "btn-open-library":
+            from typingapp.screens.library import LibraryScreen
+            self.app.push_screen(LibraryScreen())
         elif event.button.id == "btn-clear-book":
             app = self.app          # type: ignore[attr-defined]
             app.config.selected_book_id = ""
@@ -175,38 +204,18 @@ class SettingsScreen(Screen):
 
     def _pin_book(self, result: dict) -> None:
         app = self.app          # type: ignore[attr-defined]
-        book_id = result["book_id"]
-        if app.storage.get_book(book_id) is None:
-            full_text = self._fetch_book_text(result)
-            if full_text is None:
-                self.query_one("#selected-book-val", Static).update(
-                    f"⚠ Couldn't load '{result['title']}' — book not cached"
-                )
-                self.app.pop_screen()
-                return
-            app.storage.upsert_book(
-                book_id=book_id, source=result["source"], title=result["title"], author=result["author"],
-                language=app.config.language, full_text=full_text,
-                cached_at=datetime.datetime.now().isoformat(),
+        ok = fetch_and_cache_book(app.storage, app.config.language, result, datetime.datetime.now().isoformat())
+        if not ok:
+            self.query_one("#selected-book-val", Static).update(
+                f"⚠ Couldn't load '{result['title']}' — book not cached"
             )
-        app.config.selected_book_id = book_id
+            self.app.pop_screen()
+            return
+        app.config.selected_book_id = result["book_id"]
         save_config(app.config)
         self.app.pop_screen()
         self.query_one("#selected-book-val", Static).update(_book_display_text(app))
         self._refresh_book_mismatch_warning(self.query_one("#sel-content", Select).value)
-
-    def _fetch_book_text(self, result: dict) -> str | None:
-        if result["source"] == "epub":
-            nodes = parse_epub(result["path"])
-            if nodes is None:
-                return None
-            return epub_to_flat_text(nodes)
-        book = BookMeta(
-            gutenberg_id=int(result["book_id"].split(":", 1)[1]),
-            title=result["title"], author=result["author"], text_url=result["text_url"],
-        )
-        raw = fetch_full_text(book)
-        return normalize_gutenberg_text(raw) if raw is not None else None
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

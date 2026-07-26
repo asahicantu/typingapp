@@ -217,6 +217,11 @@ class Storage:
         )
         self._conn.commit()
 
+    def delete_book(self, book_id: str) -> None:
+        self._conn.execute("DELETE FROM book_progress WHERE book_id=?", (book_id,))
+        self._conn.execute("DELETE FROM books WHERE book_id=?", (book_id,))
+        self._conn.commit()
+
     def list_books_with_progress(self, limit: int = 20) -> list[dict[str, Any]]:
         rows = self._conn.execute(
             "SELECT b.book_id, b.title, b.author, b.source, b.language, b.total_chars, "

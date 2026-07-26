@@ -156,6 +156,26 @@ def test_update_book_progress_upserts(tmp_path):
     s.close()
 
 
+def test_delete_book_removes_book_and_its_progress(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.upsert_book(book_id="gutenberg:1", source="gutenberg", title="T", author="A",
+                  language="en", full_text="x" * 10, cached_at="2026-07-26T09:00:00")
+    s.update_book_progress("gutenberg:1", current_offset=5, updated_at="2026-07-26T09:05:00")
+
+    s.delete_book("gutenberg:1")
+
+    assert s.get_book("gutenberg:1") is None
+    assert s.fetch_book_progress("gutenberg:1") == 0
+    assert s.list_books_with_progress() == []
+    s.close()
+
+
+def test_delete_book_is_a_noop_for_unknown_book_id(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.delete_book("gutenberg:999")  # should not raise
+    s.close()
+
+
 def test_list_books_with_progress_orders_by_most_recently_updated(tmp_path):
     s = Storage(tmp_path / "test.db")
     s.upsert_book(book_id="gutenberg:1", source="gutenberg", title="First", author="A",
