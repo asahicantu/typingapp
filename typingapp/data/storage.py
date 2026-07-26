@@ -41,6 +41,25 @@ CREATE TABLE IF NOT EXISTS gutenberg_cache (
     fetched_at TEXT NOT NULL
 )"""
 
+CREATE_BOOKS = """
+CREATE TABLE IF NOT EXISTS books (
+    book_id TEXT PRIMARY KEY,
+    source TEXT NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    language TEXT NOT NULL,
+    full_text TEXT NOT NULL,
+    total_chars INTEGER NOT NULL,
+    cached_at TEXT NOT NULL
+)"""
+
+CREATE_BOOK_PROGRESS = """
+CREATE TABLE IF NOT EXISTS book_progress (
+    book_id TEXT PRIMARY KEY REFERENCES books(book_id),
+    current_offset INTEGER NOT NULL DEFAULT 0,
+    updated_at TEXT NOT NULL
+)"""
+
 
 @dataclass
 class SessionRecord:
@@ -82,6 +101,8 @@ class Storage:
         self._conn.execute(CREATE_SESSIONS)
         self._conn.execute(CREATE_KEYSTROKES)
         self._conn.execute(CREATE_GUTENBERG_CACHE)
+        self._conn.execute(CREATE_BOOKS)
+        self._conn.execute(CREATE_BOOK_PROGRESS)
         self._conn.commit()
 
     def insert_session(self, rec: SessionRecord) -> int:
@@ -159,6 +180,53 @@ class Storage:
             (language, language, keep),
         )
         self._conn.commit()
+
+    def get_book(self, book_id: str) -> dict[str, Any] | None:
+        row = self._conn.execute(
+            "SELECT * FROM books WHERE book_id=?", (book_id,)
+        ).fetchone()
+        return dict(row) if row else None
+
+    def upsert_book(
+        self, book_id: str, source: str, title: str, author: str, language: str,
+        full_text: str, cached_at: str,
+    ) -> None:
+        self._conn.execute(
+            "INSERT INTO books (book_id, source, title, author, language, full_text, total_chars, cached_at) "
+            "VALUES (?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(book_id) DO UPDATE SET "
+            "source=excluded.source, title=excluded.title, author=excluded.author, "
+            "language=excluded.language, full_text=excluded.full_text, "
+            "total_chars=excluded.total_chars, cached_at=excluded.cached_at",
+            (book_id, source, title, author, language, full_text, len(full_text), cached_at),
+        )
+        self._conn.commit()
+
+    def fetch_book_progress(self, book_id: str) -> int:
+        row = self._conn.execute(
+            "SELECT current_offset FROM book_progress WHERE book_id=?", (book_id,)
+        ).fetchone()
+        return row["current_offset"] if row else 0
+
+    def update_book_progress(self, book_id: str, current_offset: int, updated_at: str) -> None:
+        self._conn.execute(
+            "INSERT INTO book_progress (book_id, current_offset, updated_at) VALUES (?,?,?) "
+            "ON CONFLICT(book_id) DO UPDATE SET "
+            "current_offset=excluded.current_offset, updated_at=excluded.updated_at",
+            (book_id, current_offset, updated_at),
+        )
+        self._conn.commit()
+
+    def list_books_with_progress(self, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT b.book_id, b.title, b.author, b.source, b.language, b.total_chars, "
+            "COALESCE(p.current_offset, 0) AS current_offset, "
+            "COALESCE(p.updated_at, b.cached_at) AS updated_at "
+            "FROM books b LEFT JOIN book_progress p ON p.book_id = b.book_id "
+            "ORDER BY updated_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
 
     def close(self) -> None:
         self._conn.close()
