@@ -79,6 +79,19 @@ Screen {
     width: 100%;
 }
 
+#results-commands {
+    height: auto;
+    align: center middle;
+    width: 100%;
+}
+
+.command-item {
+    color: #43b0f1;
+    text-style: bold;
+    width: auto;
+    margin: 0 2 0 2;
+}
+
 .setting-row {
     height: auto;
     margin: 0 0 1 0;

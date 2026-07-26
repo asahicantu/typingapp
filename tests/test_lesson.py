@@ -82,6 +82,18 @@ def test_literature_content_type_falls_back_when_no_storage_or_network(monkeypat
     assert len(lesson.strip()) > 0
 
 
+def test_word_count_override_controls_word_count_regardless_of_difficulty():
+    eng = LessonEngine()
+    text = eng.get_lesson("words", difficulty=1, word_count_override=45)
+    assert len(text.split()) == 45
+
+
+def test_word_count_override_zero_falls_back_to_difficulty_table():
+    eng = LessonEngine()
+    text = eng.get_lesson("words", difficulty=1, word_count_override=0)
+    assert len(text.split()) == 10
+
+
 def test_get_lesson_accepts_recent_wpm_and_session_duration_for_sizing():
     engine = LessonEngine()
     short = engine.get_lesson(content_type="words", difficulty=3, language="en",

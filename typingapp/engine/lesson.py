@@ -47,6 +47,7 @@ class LessonEngine:
         storage=None,
         recent_wpm: float = 0,
         session_duration: int = 60,
+        word_count_override: int = 0,
     ) -> str:
         if content_type == "custom":
             return custom_text
@@ -58,10 +59,12 @@ class LessonEngine:
             return self._build_random_sentences(language, recent_wpm, session_duration, storage)
         if content_type == "literature":
             return self._build_literature_lesson(language, recent_wpm, session_duration, storage)
-        return self._build_word_lesson(difficulty, weak_bigrams or [], language)
+        return self._build_word_lesson(difficulty, weak_bigrams or [], language, word_count_override)
 
-    def _build_word_lesson(self, difficulty: int, weak_bigrams: list[str], language: str) -> str:
-        count = WORD_COUNTS.get(max(1, min(difficulty, 10)), 20)
+    def _build_word_lesson(
+        self, difficulty: int, weak_bigrams: list[str], language: str, word_count_override: int = 0
+    ) -> str:
+        count = word_count_override if word_count_override > 0 else WORD_COUNTS.get(max(1, min(difficulty, 10)), 20)
         pool = self._words(language)
         if weak_bigrams:
             biased = [w for w in pool if any(bg in w for bg in weak_bigrams)]

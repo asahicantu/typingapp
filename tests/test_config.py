@@ -41,3 +41,18 @@ def test_language_roundtrips_through_save_and_load(tmp_path):
     save_config(cfg, path)
     loaded = load_config(path)
     assert loaded.language == "es"
+
+
+def test_default_manual_difficulty_and_word_count_override():
+    cfg = AppConfig()
+    assert cfg.manual_difficulty is False
+    assert cfg.word_count_override == 0
+
+
+def test_manual_difficulty_and_word_count_override_roundtrip(tmp_path):
+    cfg = AppConfig(manual_difficulty=True, word_count_override=40)
+    path = tmp_path / "config.json"
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.manual_difficulty is True
+    assert loaded.word_count_override == 40
