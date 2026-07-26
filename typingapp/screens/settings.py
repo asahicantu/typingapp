@@ -5,7 +5,7 @@ from textual.screen import Screen
 from textual.widgets import Static, Button, Switch, Select, Label, Input
 from textual.containers import Vertical, Horizontal, ScrollableContainer
 from typingapp.config import save_config
-from typingapp.engine.book_text import page_info, normalize_gutenberg_text
+from typingapp.engine.book_text import page_info, normalize_gutenberg_text, CONTENT_TYPE_LABELS
 from typingapp.engine.gutenberg import BookMeta, fetch_full_text
 from typingapp.engine.epub_source import parse_epub, epub_to_flat_text
 
@@ -20,6 +20,13 @@ def _book_display_text(app) -> str:
     offset = app.storage.fetch_book_progress(cfg.selected_book_id)
     page, total_pages, pct = page_info(book["total_chars"], offset)
     return f"{book['title']} — {book['author']}  ({pct:.0f}% · page {page}/{total_pages})"
+
+
+def _book_mismatch_warning(app, content_type: str) -> str:
+    if app.config.selected_book_id and content_type != "literature":
+        label = CONTENT_TYPE_LABELS.get(content_type, content_type)
+        return f'⚠ Content type is "{label}" — switch to "Literature" to read this book'
+    return ""
 
 
 class SettingsScreen(Screen):
@@ -86,13 +93,14 @@ class SettingsScreen(Screen):
                 )
             yield Static("")
 
-            yield Static("BOOKS", classes="stat-label")
+            yield Static("BOOKS  (applies only when Content type = Literature)", classes="stat-label")
             with Horizontal(classes="setting-row"):
                 yield Label("Local EPUB folder")
                 yield Input(value=cfg.epub_folder, placeholder="/path/to/epub/folder", id="input-epub-folder")
             with Horizontal(classes="setting-row"):
                 yield Label("Selected book")
                 yield Static(_book_display_text(self.app), id="selected-book-val")
+            yield Static(_book_mismatch_warning(self.app, cfg.content_type), id="book-mismatch-warning", classes="stat-label")
             with Horizontal(classes="setting-row"):
                 yield Button("📚  Browse Books", id="btn-browse-books")
                 yield Button("✕  Clear Selection", id="btn-clear-book")
@@ -117,6 +125,15 @@ class SettingsScreen(Screen):
         if event.switch.id == "sw-sound" and event.value:
             app = self.app          # type: ignore[attr-defined]
             app.sound.play_correct()
+
+    def on_select_changed(self, event: Select.Changed) -> None:
+        if event.select.id == "sel-content" and event.value != Select.BLANK:
+            self._refresh_book_mismatch_warning(event.value)
+
+    def _refresh_book_mismatch_warning(self, content_type: str) -> None:
+        self.query_one("#book-mismatch-warning", Static).update(
+            _book_mismatch_warning(self.app, content_type)
+        )
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-save":
@@ -154,6 +171,7 @@ class SettingsScreen(Screen):
             app.config.selected_book_id = ""
             save_config(app.config)
             self.query_one("#selected-book-val", Static).update(_book_display_text(app))
+            self._refresh_book_mismatch_warning(self.query_one("#sel-content", Select).value)
 
     def _pin_book(self, result: dict) -> None:
         app = self.app          # type: ignore[attr-defined]
@@ -175,6 +193,7 @@ class SettingsScreen(Screen):
         save_config(app.config)
         self.app.pop_screen()
         self.query_one("#selected-book-val", Static).update(_book_display_text(app))
+        self._refresh_book_mismatch_warning(self.query_one("#sel-content", Select).value)
 
     def _fetch_book_text(self, result: dict) -> str | None:
         if result["source"] == "epub":

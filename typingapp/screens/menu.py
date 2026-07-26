@@ -4,6 +4,21 @@ from textual.screen import Screen
 from textual.widgets import Static, Button, Label
 from textual.containers import Center, Middle, Vertical
 
+from typingapp.engine.book_text import page_info, CONTENT_TYPE_LABELS
+
+
+def _next_lesson_preview(app) -> str:
+    cfg = app.config
+    label = CONTENT_TYPE_LABELS.get(cfg.content_type, cfg.content_type)
+    if cfg.content_type == "literature" and cfg.selected_book_id:
+        book = app.storage.get_book(cfg.selected_book_id)
+        if book is not None:
+            offset = app.storage.fetch_book_progress(cfg.selected_book_id)
+            page, total_pages, pct = page_info(book["total_chars"], offset)
+            return f"Next: Literature — {book['title']}, page {page}/{total_pages} ({pct:.0f}%)"
+        return f"Next: Literature — {cfg.selected_book_id} (not cached yet, will fetch)"
+    return f"Next: {label}"
+
 
 class MenuScreen(Screen):
     BINDINGS = [
@@ -19,6 +34,8 @@ class MenuScreen(Screen):
             with Center():
                 with Vertical(id="menu-box"):
                     yield Static("⌨  TYPING TUTOR", classes="menu-title")
+                    yield Static("", classes="spacer")
+                    yield Label("", id="next-lesson-label", classes="stat-label")
                     yield Static("", classes="spacer")
                     yield Button("1  ▶  Start Lesson", id="btn-start", variant="primary")
                     yield Button("2  📊  History & Progress", id="btn-history")
@@ -39,6 +56,16 @@ class MenuScreen(Screen):
             self.query_one("#last-session-label", Label).update(
                 f"Last session: {s['wpm']:.0f} WPM · {s['accuracy']:.1f}% accuracy"
             )
+
+    def on_screen_resume(self) -> None:
+        # Settings may have changed content type/selected book while this screen was
+        # suspended underneath it. Unlike on_mount (fires once ever), on_screen_resume
+        # fires both at initial mount and every time this screen is revealed again via
+        # pop_screen() — on_show does NOT re-fire on resume, only at first mount.
+        self._refresh_next_lesson_preview()
+
+    def _refresh_next_lesson_preview(self) -> None:
+        self.query_one("#next-lesson-label", Label).update(_next_lesson_preview(self.app))
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         if event.button.id == "btn-start":

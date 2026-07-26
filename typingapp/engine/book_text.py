@@ -6,6 +6,11 @@ CHARS_PER_PAGE = 1200
 SENTENCE_END_RE = re.compile(r'[.!?]["\')\]]?(?=\s|$)')
 SHORT_HEADING_MAX_WORDS = 8
 
+CONTENT_TYPE_LABELS = {
+    "words": "Words", "sentences": "Sentences", "random_sentences": "Random Sentences",
+    "literature": "Literature", "code": "Code", "custom": "Custom Text",
+}
+
 
 def normalize_gutenberg_text(raw: str) -> str:
     """Rewrite short standalone lines (surrounded by blank lines) as '# heading' markup."""
