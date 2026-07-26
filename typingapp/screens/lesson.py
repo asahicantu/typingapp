@@ -42,6 +42,7 @@ class LessonScreen(Screen):
         self._book_total_chars = 0
         self._book_tick_counter = 0
         self._book_chunk_spans: list[tuple[str, int, int]] = []
+        self._missed_words: set[str] = set()
 
     def _load_lesson_text(self) -> str:
         app = self.app      # type: ignore[attr-defined]
@@ -92,6 +93,10 @@ class LessonScreen(Screen):
 
     def _start_lesson(self) -> None:
         app = self.app      # type: ignore[attr-defined]
+        if app.config.highlight_past_mistakes:
+            self._missed_words = app.storage.fetch_frequently_missed_words()
+        else:
+            self._missed_words = set()
         text = self._load_lesson_text()
         engine = app.lesson_engine
         self._book_id = engine._last_chunk_book_id
@@ -256,10 +261,28 @@ class LessonScreen(Screen):
         rest = ""
         if pos < len(target):
             cursor = f"[bold on red]{target[pos]}[/]"
-            rest = f"[dim]{target[pos+1:]}[/]"
+            rest = self._style_rest_with_mistake_highlight(target[pos+1:])
         display = self.query_one("#text-display", Static)
         display.update(typed + cursor + rest)
         self._scroll_to_cursor(pos, len(target))
+
+    def _style_rest_with_mistake_highlight(self, text: str) -> str:
+        if not self._missed_words:
+            return f"[dim]{text}[/]"
+        parts: list[str] = []
+        cursor = 0
+        for match in WORD_RE.finditer(text):
+            word = match.group()
+            if cursor < match.start():
+                parts.append(f"[dim]{text[cursor:match.start()]}[/]")
+            if word in self._missed_words:
+                parts.append(f"[dim][#ffb347]{word}[/][/]")
+            else:
+                parts.append(f"[dim]{word}[/]")
+            cursor = match.end()
+        if cursor < len(text):
+            parts.append(f"[dim]{text[cursor:]}[/]")
+        return "".join(parts)
 
     def _render_book_text(self) -> None:
         s = self._scorer
@@ -316,7 +339,11 @@ class LessonScreen(Screen):
             if PUNCTUATION_SPLIT_RE.fullmatch(segment):
                 parts.append(f"[#888888]{escape(segment)}[/]")
             else:
-                parts.append(f"[dim]{escape(segment)}[/]")
+                color = "#ffb347" if segment.strip() in self._missed_words else None
+                if color:
+                    parts.append(f"[{color}]{escape(segment)}[/]")
+                else:
+                    parts.append(f"[dim]{escape(segment)}[/]")
         return "".join(parts)
 
     def _scroll_to_cursor(self, position: int, target_length: int) -> None:
@@ -372,8 +399,10 @@ class LessonScreen(Screen):
         if self._timer:
             self._timer.stop()
         self._persist_book_progress()
-        s = self._scorer
         app = self.app          # type: ignore[attr-defined]
+        if self._scorer is not None:
+            app.storage.record_word_mistakes(self._scorer.word_errors)
+        s = self._scorer
         if app.config.manual_difficulty:
             session_difficulty = app.config.difficulty
         else:
