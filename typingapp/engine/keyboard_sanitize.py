@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import unicodedata
+
 # US-QWERTY-typeable ASCII: printable 0x20-0x7E plus common whitespace.
 TYPEABLE_ASCII = frozenset(chr(c) for c in range(0x20, 0x7F)) | {"\n", "\t"}
 
@@ -29,6 +31,28 @@ _EN_US_QWERTY_REPLACEMENTS: dict[str, str] = {
     chr(0xFEFF): " ",  # BOM / zero-width no-break space
 }
 
+# Accented/special Latin letters that do NOT decompose into a base letter plus
+# a combining mark under Unicode NFD normalization, so the NFD fallback in
+# sanitize_for_keyboard can't resolve them. Each value is a single typeable
+# ASCII character standing in for the accented original.
+_NON_DECOMPOSING_REPLACEMENTS: dict[str, str] = {
+    "ß": "s",  # German sharp s (eszett)
+    "œ": "o",  # Latin small ligature oe
+    "Œ": "O",  # Latin capital ligature OE
+    "æ": "a",  # Latin small ligature ae
+    "Æ": "A",  # Latin capital ligature AE
+    "ø": "o",  # Latin small letter o with stroke
+    "Ø": "O",  # Latin capital letter O with stroke
+    "đ": "d",  # Latin small letter d with stroke
+    "Đ": "D",  # Latin capital letter D with stroke
+    "ł": "l",  # Latin small letter l with stroke
+    "Ł": "L",  # Latin capital letter L with stroke
+    "þ": "t",  # thorn
+    "Þ": "T",  # capital thorn
+    "ð": "d",  # eth
+    "Ð": "D",  # capital eth
+}
+
 _LAYOUTS = {
     "en-us-qwerty": _EN_US_QWERTY_REPLACEMENTS,
 }
@@ -47,6 +71,13 @@ def sanitize_for_keyboard(text: str, layout: str = "en-us-qwerty") -> str:
             out_chars.append(ch)
         elif ch in replacements:
             out_chars.append(replacements[ch])
+        elif ch in _NON_DECOMPOSING_REPLACEMENTS:
+            out_chars.append(_NON_DECOMPOSING_REPLACEMENTS[ch])
         else:
-            out_chars.append(" ")
+            decomposed = unicodedata.normalize("NFD", ch)
+            base = decomposed[0] if decomposed else ""
+            if base and base in TYPEABLE_ASCII:
+                out_chars.append(base)
+            else:
+                out_chars.append(" ")
     return "".join(out_chars)

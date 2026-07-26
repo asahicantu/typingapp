@@ -36,11 +36,29 @@ def test_unmappable_character_becomes_a_single_space():
     assert sanitize_for_keyboard("hello中 world") == "hello  world"
 
 
+def test_accented_latin_characters_become_unaccented_ascii_not_a_space():
+    # Regression: accented Latin letters (common in Gutenberg text, and directly
+    # relevant to the app's Spanish/French reading support) must NOT fall through
+    # to the bare-space branch, which fragments words (e.g. "café" -> "caf ").
+    assert sanitize_for_keyboard("café") == "cafe"
+    assert sanitize_for_keyboard("naïve") == "naive"
+    assert sanitize_for_keyboard("señor") == "senor"
+    assert sanitize_for_keyboard("fiancée") == "fiancee"
+
+
+def test_non_decomposing_special_latin_characters_get_explicit_replacements():
+    # These don't decompose into base+combining-mark via NFD, so they need the
+    # explicit _NON_DECOMPOSING_REPLACEMENTS table.
+    assert sanitize_for_keyboard("Straße") == "Strase"
+    assert sanitize_for_keyboard("œuvre") == "ouvre"
+
+
 def test_output_length_always_equals_input_length():
     # the invariant every other book-offset computation in this codebase depends on
     samples = [
         "plain ascii",
         "“curly quotes’ and — dashes… mixed in中text",
+        "café naïve señor Straße fiancée œuvre",
         "",
     ]
     for text in samples:

@@ -1,5 +1,4 @@
 import asyncio
-import datetime
 from pathlib import Path
 from textual.app import App
 
@@ -14,7 +13,7 @@ from typingapp.screens.lesson import LessonScreen
 
 UNTYPEABLE_BOOK_TEXT = (
     "# Chapter One\n\n"
-    "“Wait—no,” she said… ‘Really?’ A pause of 100 km followed.\n\n"
+    "“Wait—no,” she said… ‘Really?’ A pause of 100 km followed.\n\n"
     "Second paragraph with normal ascii text."
 )
 
