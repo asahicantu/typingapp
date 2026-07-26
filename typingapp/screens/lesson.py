@@ -12,6 +12,7 @@ from typingapp.engine.scorer import Scorer
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
 from typingapp.engine.book_text import page_info, strip_heading_markup
+from typingapp.engine.keyboard_sanitize import sanitize_for_keyboard
 from typingapp.engine.charts import horizontal_bar
 from typingapp.data.storage import SessionRecord
 
@@ -52,7 +53,7 @@ class LessonScreen(Screen):
         recent_wpms = storage.fetch_last_n_wpm(n=5)
         recent_wpm = sum(recent_wpms) / len(recent_wpms) if recent_wpms else 0
         difficulty = cfg.difficulty if cfg.manual_difficulty else adaptive.current_level
-        return app.lesson_engine.get_lesson(
+        text = app.lesson_engine.get_lesson(
             content_type=cfg.content_type,
             difficulty=difficulty,
             custom_text=self._custom_text,
@@ -64,6 +65,9 @@ class LessonScreen(Screen):
             word_count_override=cfg.word_count_override,
             selected_book_id=cfg.selected_book_id,
         )
+        if text == BOOK_COMPLETE_SENTINEL:
+            return text
+        return sanitize_for_keyboard(text)
 
     def compose(self) -> ComposeResult:
         with Vertical():
@@ -221,6 +225,8 @@ class LessonScreen(Screen):
         if more_text == BOOK_COMPLETE_SENTINEL:
             self.query_one("#hint-bar", Label).update("🎉 You've reached the end of this book!")
             return
+        if more_text:
+            more_text = sanitize_for_keyboard(more_text)
         if more_text:
             if self._book_id:
                 # book-mode chunks continue at an exact character offset in the book's text,
