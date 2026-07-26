@@ -339,11 +339,23 @@ class LessonScreen(Screen):
             if PUNCTUATION_SPLIT_RE.fullmatch(segment):
                 parts.append(f"[#888888]{escape(segment)}[/]")
             else:
-                color = "#ffb347" if segment.strip() in self._missed_words else None
-                if color:
-                    parts.append(f"[{color}]{escape(segment)}[/]")
-                else:
-                    parts.append(f"[dim]{escape(segment)}[/]")
+                parts.append(self._style_words_with_mistake_highlight(segment))
+        return "".join(parts)
+
+    def _style_words_with_mistake_highlight(self, segment: str) -> str:
+        parts: list[str] = []
+        cursor = 0
+        for match in WORD_RE.finditer(segment):
+            word = match.group()
+            if cursor < match.start():
+                parts.append(f"[dim]{escape(segment[cursor:match.start()])}[/]")
+            if word in self._missed_words:
+                parts.append(f"[dim][#ffb347]{escape(word)}[/][/]")
+            else:
+                parts.append(f"[dim]{escape(word)}[/]")
+            cursor = match.end()
+        if cursor < len(segment):
+            parts.append(f"[dim]{escape(segment[cursor:])}[/]")
         return "".join(parts)
 
     def _scroll_to_cursor(self, position: int, target_length: int) -> None:
