@@ -3,13 +3,20 @@ import json
 import random
 import re
 from dataclasses import dataclass
-from urllib.request import urlopen
+from urllib.parse import quote
+from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 GUTENDEX_URL = "https://gutendex.com/books"
 TIMEOUT_SECONDS = 3
+FULL_TEXT_TIMEOUT_SECONDS = 15
+USER_AGENT = "Mozilla/5.0 (compatible; typingapp/1.0; +https://github.com/)"
 START_MARKER_RE = re.compile(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.IGNORECASE)
 END_MARKER_RE = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.IGNORECASE)
+
+
+def _get(url: str, timeout: float):
+    return urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -20,10 +27,12 @@ class BookMeta:
     text_url: str
 
 
-def search_books(language: str, limit: int = 20) -> list[BookMeta]:
+def search_books(language: str, limit: int = 20, query: str = "") -> list[BookMeta]:
     url = f"{GUTENDEX_URL}?languages={language}&mime_type=text/plain"
+    if query.strip():
+        url += f"&search={quote(query.strip())}"
     try:
-        with urlopen(url, timeout=TIMEOUT_SECONDS) as response:
+        with _get(url, timeout=TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, ValueError, OSError):
         return []
@@ -52,7 +61,7 @@ def _find_plain_text_url(formats: dict) -> str | None:
 
 def fetch_excerpt(book: BookMeta, min_words: int, max_words: int) -> str | None:
     try:
-        with urlopen(book.text_url, timeout=TIMEOUT_SECONDS) as response:
+        with _get(book.text_url, timeout=TIMEOUT_SECONDS) as response:
             raw = response.read().decode("utf-8", errors="ignore")
     except (URLError, TimeoutError, OSError):
         return None
@@ -66,6 +75,17 @@ def fetch_excerpt(book: BookMeta, min_words: int, max_words: int) -> str | None:
     max_start = len(words) - slice_len
     start = random.randint(0, max_start) if max_start > 0 else 0
     return " ".join(words[start:start + slice_len])
+
+
+def fetch_full_text(book: BookMeta) -> str | None:
+    try:
+        with _get(book.text_url, timeout=FULL_TEXT_TIMEOUT_SECONDS) as response:
+            raw = response.read().decode("utf-8", errors="ignore")
+    except (URLError, TimeoutError, OSError):
+        return None
+
+    body = _strip_boilerplate(raw)
+    return body if body.strip() else None
 
 
 def _strip_boilerplate(raw: str) -> str:

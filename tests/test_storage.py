@@ -107,3 +107,64 @@ def test_prune_old_excerpts_keeps_only_n_most_recent(tmp_path):
     titles = {r["title"] for r in remaining}
     assert titles == {"Book3", "Book4"}
     s.close()
+
+
+def test_get_book_returns_none_when_missing(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    assert s.get_book("gutenberg:1342") is None
+    s.close()
+
+
+def test_upsert_book_insert_then_update(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.upsert_book(
+        book_id="gutenberg:1342", source="gutenberg", title="Pride and Prejudice",
+        author="Jane Austen", language="en", full_text="It is a truth...",
+        cached_at="2026-07-26T10:00:00",
+    )
+    book = s.get_book("gutenberg:1342")
+    assert book["title"] == "Pride and Prejudice"
+    assert book["total_chars"] == len("It is a truth...")
+
+    s.upsert_book(
+        book_id="gutenberg:1342", source="gutenberg", title="Pride and Prejudice",
+        author="Jane Austen", language="en", full_text="It is a truth universally acknowledged...",
+        cached_at="2026-07-26T11:00:00",
+    )
+    updated = s.get_book("gutenberg:1342")
+    assert updated["cached_at"] == "2026-07-26T11:00:00"
+    assert updated["total_chars"] == len("It is a truth universally acknowledged...")
+    s.close()
+
+
+def test_fetch_book_progress_defaults_to_zero(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    assert s.fetch_book_progress("gutenberg:1342") == 0
+    s.close()
+
+
+def test_update_book_progress_upserts(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.upsert_book(
+        book_id="gutenberg:1342", source="gutenberg", title="T", author="A",
+        language="en", full_text="x" * 100, cached_at="2026-07-26T10:00:00",
+    )
+    s.update_book_progress("gutenberg:1342", current_offset=50, updated_at="2026-07-26T10:05:00")
+    assert s.fetch_book_progress("gutenberg:1342") == 50
+    s.update_book_progress("gutenberg:1342", current_offset=80, updated_at="2026-07-26T10:10:00")
+    assert s.fetch_book_progress("gutenberg:1342") == 80
+    s.close()
+
+
+def test_list_books_with_progress_orders_by_most_recently_updated(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.upsert_book(book_id="gutenberg:1", source="gutenberg", title="First", author="A",
+                   language="en", full_text="x" * 10, cached_at="2026-07-26T09:00:00")
+    s.upsert_book(book_id="gutenberg:2", source="gutenberg", title="Second", author="B",
+                   language="en", full_text="y" * 10, cached_at="2026-07-26T09:00:00")
+    s.update_book_progress("gutenberg:2", current_offset=5, updated_at="2026-07-26T12:00:00")
+    books = s.list_books_with_progress(limit=10)
+    assert [b["title"] for b in books] == ["Second", "First"]
+    assert books[0]["current_offset"] == 5
+    assert books[1]["current_offset"] == 0
+    s.close()

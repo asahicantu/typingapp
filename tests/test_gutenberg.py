@@ -1,7 +1,7 @@
 from unittest.mock import patch, MagicMock
 import json
 import urllib.error
-from typingapp.engine.gutenberg import search_books, fetch_excerpt, BookMeta
+from typingapp.engine.gutenberg import search_books, fetch_excerpt, fetch_full_text, BookMeta, USER_AGENT
 
 
 SAMPLE_GUTENDEX_RESPONSE = json.dumps({
@@ -93,3 +93,48 @@ def test_fetch_excerpt_returns_none_when_body_too_short():
     with patch("typingapp.engine.gutenberg.urlopen", return_value=_mock_urlopen_returning(short_text)):
         excerpt = fetch_excerpt(book, min_words=500, max_words=1000)
     assert excerpt is None
+
+
+def test_search_books_sends_browser_like_user_agent():
+    captured_request = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured_request["request"] = request
+        return _mock_urlopen_returning(SAMPLE_GUTENDEX_RESPONSE)
+
+    with patch("typingapp.engine.gutenberg.urlopen", side_effect=fake_urlopen):
+        search_books(language="en", limit=20)
+    assert captured_request["request"].get_header("User-agent") == USER_AGENT
+
+
+def test_search_books_appends_search_query_param():
+    captured_request = {}
+
+    def fake_urlopen(request, timeout=None):
+        captured_request["request"] = request
+        return _mock_urlopen_returning(SAMPLE_GUTENDEX_RESPONSE)
+
+    with patch("typingapp.engine.gutenberg.urlopen", side_effect=fake_urlopen):
+        search_books(language="en", limit=20, query="pride and prejudice")
+    assert "search=pride%20and%20prejudice" in captured_request["request"].full_url
+
+
+def test_search_books_without_query_omits_search_param():
+    with patch("typingapp.engine.gutenberg.urlopen", return_value=_mock_urlopen_returning(SAMPLE_GUTENDEX_RESPONSE)):
+        search_books(language="en", limit=20)
+
+
+def test_fetch_full_text_strips_boilerplate_and_returns_whole_body():
+    book = BookMeta(gutenberg_id=1, title="Sample", author="Someone", text_url="https://example.org/1.txt")
+    with patch("typingapp.engine.gutenberg.urlopen", return_value=_mock_urlopen_returning(SAMPLE_BOOK_TEXT)):
+        full_text = fetch_full_text(book)
+    assert full_text is not None
+    assert "Project Gutenberg eBook" not in full_text
+    assert "More boilerplate" not in full_text
+    assert len(full_text.split()) == 500
+
+
+def test_fetch_full_text_returns_none_on_network_error():
+    book = BookMeta(gutenberg_id=1, title="Sample", author="Someone", text_url="https://example.org/1.txt")
+    with patch("typingapp.engine.gutenberg.urlopen", side_effect=urllib.error.URLError("no connection")):
+        assert fetch_full_text(book) is None

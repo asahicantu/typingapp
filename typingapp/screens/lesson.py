@@ -1,5 +1,7 @@
 from __future__ import annotations
 import datetime
+import re
+from textual.markup import escape
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Static, Label, ProgressBar
@@ -8,7 +10,15 @@ from textual.timer import Timer
 
 from typingapp.engine.scorer import Scorer
 from typingapp.engine.adaptive import AdaptiveEngine
+from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
+from typingapp.engine.book_text import page_info, strip_heading_markup
+from typingapp.engine.charts import horizontal_bar
 from typingapp.data.storage import SessionRecord
+
+BOOK_PROGRESS_PERSIST_TICKS = 80  # ~20s at the 0.25s tick interval
+BOOK_LEAD_IN_WORDS = 3
+WORD_RE = re.compile(r"\S+")
+PUNCTUATION_SPLIT_RE = re.compile(r'([.,;:!?—"\'])')
 
 
 class LessonScreen(Screen):
@@ -25,6 +35,11 @@ class LessonScreen(Screen):
         self._scorer: Scorer | None = None
         self._timer: Timer | None = None
         self._paused = False
+        self._book_id = ""
+        self._book_chunk_start_offset = 0
+        self._book_total_chars = 0
+        self._book_tick_counter = 0
+        self._book_chunk_spans: list[tuple[str, int, int]] = []
 
     def _load_lesson_text(self) -> str:
         app = self.app      # type: ignore[attr-defined]
@@ -46,6 +61,7 @@ class LessonScreen(Screen):
             recent_wpm=recent_wpm,
             session_duration=cfg.session_duration,
             word_count_override=cfg.word_count_override,
+            selected_book_id=cfg.selected_book_id,
         )
 
     def compose(self) -> ComposeResult:
@@ -60,6 +76,7 @@ class LessonScreen(Screen):
                 yield Label("  ✗ ERR: ", classes="stat-label")
                 yield Label("0", id="err-val", classes="stat-value err-value")
             yield ProgressBar(total=100, show_eta=False, id="progress-bar")
+            yield Label("", id="book-progress-val", classes="stat-label")
             with VerticalScroll(id="text-scroll"):
                 yield Static("", id="text-display")
             yield Label("", id="hint-bar", classes="hint-bar")
@@ -71,10 +88,64 @@ class LessonScreen(Screen):
     def _start_lesson(self) -> None:
         app = self.app      # type: ignore[attr-defined]
         text = self._load_lesson_text()
+        engine = app.lesson_engine
+        self._book_id = engine._last_chunk_book_id
+        self._book_chunk_start_offset = engine._last_chunk_start_offset
+        self._book_total_chars = 0
+        if self._book_id:
+            book = app.storage.get_book(self._book_id)
+            self._book_total_chars = book["total_chars"] if book else 0
+
+        if text == BOOK_COMPLETE_SENTINEL:
+            self._scorer = None
+            self._book_chunk_spans = []
+            self.query_one("#text-display", Static).update("🎉 You've finished this book!")
+            self.query_one("#hint-bar", Label).update("")
+            self._update_book_progress_label()
+            return
+
+        if self._book_id:
+            # '# ' heading markers are markup, not text the user should have to type — strip
+            # them and keep the resulting spans (in stripped-text offsets) for rendering/progress
+            text, self._book_chunk_spans = strip_heading_markup(text)
+        else:
+            self._book_chunk_spans = []
+
         self._scorer = Scorer(text, strict_mode=app.config.strict_mode)
         self._scorer.start()
         self._render_text()
         self._timer = self.set_interval(0.25, self._tick)
+        self._update_book_progress_label()
+        reason = app.lesson_engine.last_fallback_reason
+        if reason:
+            self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
+
+    def _book_raw_offset(self, stripped_pos: int) -> int:
+        # spans are in stripped-text offsets; each heading we've reached had a 2-char '# ' marker
+        # in the original book text that isn't in the typed string, so add it back per heading
+        marker_chars = sum(
+            2 for kind, start, _end in self._book_chunk_spans if kind == "heading" and start <= stripped_pos
+        )
+        return self._book_chunk_start_offset + stripped_pos + marker_chars
+
+    def _update_book_progress_label(self) -> None:
+        label = self.query_one("#book-progress-val", Label)
+        if not self._book_id or self._book_total_chars <= 0:
+            label.update("")
+            return
+        current_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        page, total_pages, pct = page_info(self._book_total_chars, current_offset)
+        bar = horizontal_bar("Progress", pct, 100, width=24, value_fmt=lambda v: f"page {page}/{total_pages}")
+        label.update(bar)
+
+    def _persist_book_progress(self) -> None:
+        if not self._book_id or self._scorer is None:
+            return
+        app = self.app      # type: ignore[attr-defined]
+        absolute_pos = self._book_raw_offset(self._scorer.position)
+        app.storage.update_book_progress(
+            self._book_id, absolute_pos, datetime.datetime.now().isoformat()
+        )
 
     def _tick(self) -> None:
         if self._paused or self._scorer is None:
@@ -89,6 +160,12 @@ class LessonScreen(Screen):
         pct = int((s.position / max(len(s.target), 1)) * 100)
         self.query_one("#progress-bar", ProgressBar).update(progress=pct)
         self._maybe_extend_text()
+        if self._book_id:
+            self._update_book_progress_label()
+            self._book_tick_counter += 1
+            if self._book_tick_counter >= BOOK_PROGRESS_PERSIST_TICKS:
+                self._book_tick_counter = 0
+                self._persist_book_progress()
 
     def _maybe_extend_text(self) -> None:
         app = self.app      # type: ignore[attr-defined]
@@ -100,6 +177,13 @@ class LessonScreen(Screen):
         chars_remaining = len(s.target) - s.position
         near_end = chars_remaining <= max(20, len(s.target) * 0.15)
         if near_end and time_remaining > 5 and cfg.content_type in ("literature", "random_sentences"):
+            if self._book_id:
+                # keep the book's stored offset in sync with what's already been fetched (end of
+                # target, not just what's been typed) so the next chunk continues contiguously
+                app.storage.update_book_progress(
+                    self._book_id, self._book_raw_offset(len(s.target)),
+                    datetime.datetime.now().isoformat(),
+                )
             try:
                 more_text = app.lesson_engine.get_lesson(
                     content_type=cfg.content_type,
@@ -108,14 +192,33 @@ class LessonScreen(Screen):
                     storage=app.storage,
                     recent_wpm=s.wpm,
                     session_duration=max(int(time_remaining), 15),
+                    selected_book_id=cfg.selected_book_id,
                 )
             except Exception:
                 more_text = ""
-            if more_text:
-                s.extend(" " + more_text)
+            reason = app.lesson_engine.last_fallback_reason
+            if reason:
+                self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
+            if more_text and more_text != BOOK_COMPLETE_SENTINEL:
+                if self._book_id:
+                    # book-mode chunks continue at an exact character offset in the book's text,
+                    # so no separator is inserted; strip '# ' markers the same way _start_lesson
+                    # does, offsetting the new spans past the text already in the target
+                    more_stripped, more_spans = strip_heading_markup(more_text)
+                    base = len(s.target)
+                    self._book_chunk_spans.extend(
+                        (kind, base + start, base + end) for kind, start, end in more_spans
+                    )
+                    s.extend(more_stripped)
+                else:
+                    # non-book modes join separate excerpts with a space
+                    s.extend(" " + more_text)
 
     def _render_text(self) -> None:
         if self._scorer is None:
+            return
+        if self._book_id:
+            self._render_book_text()
             return
         s = self._scorer
         target = s.target
@@ -129,6 +232,64 @@ class LessonScreen(Screen):
         display = self.query_one("#text-display", Static)
         display.update(typed + cursor + rest)
         self._scroll_to_cursor(pos, len(target))
+
+    def _render_book_text(self) -> None:
+        s = self._scorer
+        target = s.target
+        pos = s.position
+        typed = f"[bold green]{escape(target[:pos])}[/]"
+        cursor = ""
+        rest_markup = ""
+        if pos < len(target):
+            cursor = f"[bold on red]{escape(target[pos])}[/]"
+            rest_markup = self._style_book_rest(target, pos + 1)
+        display = self.query_one("#text-display", Static)
+        display.update(typed + cursor + rest_markup)
+        self._scroll_to_cursor(pos, len(target))
+
+    def _style_book_rest(self, target: str, rest_start: int) -> str:
+        if rest_start >= len(target):
+            return ""
+        parts: list[str] = []
+        cursor_pos = rest_start
+        for kind, start, end in self._book_chunk_spans:
+            if end <= rest_start:
+                continue
+            if start > cursor_pos:
+                parts.append(escape(target[cursor_pos:start]))
+            clipped_start = max(start, rest_start)
+            clipped_text = target[clipped_start:end]
+            if clipped_text:
+                if kind == "heading":
+                    parts.append(f"[bold italic gold3]{escape(clipped_text)}[/]")
+                elif clipped_start == start:
+                    parts.append(self._style_paragraph_lead_in(clipped_text))
+                else:
+                    parts.append(self._style_paragraph_punctuation(clipped_text))
+            cursor_pos = end
+        if cursor_pos < len(target):
+            parts.append(escape(target[cursor_pos:]))
+        return "".join(parts)
+
+    def _style_paragraph_lead_in(self, text: str) -> str:
+        words = list(WORD_RE.finditer(text))
+        if not words:
+            return self._style_paragraph_punctuation(text)
+        lead_end = words[min(BOOK_LEAD_IN_WORDS, len(words)) - 1].end()
+        lead, remainder = text[:lead_end], text[lead_end:]
+        remainder_markup = self._style_paragraph_punctuation(remainder) if remainder else ""
+        return f"[bold white]{escape(lead)}[/]" + remainder_markup
+
+    def _style_paragraph_punctuation(self, text: str) -> str:
+        parts: list[str] = []
+        for segment in PUNCTUATION_SPLIT_RE.split(text):
+            if not segment:
+                continue
+            if PUNCTUATION_SPLIT_RE.fullmatch(segment):
+                parts.append(f"[#888888]{escape(segment)}[/]")
+            else:
+                parts.append(f"[dim]{escape(segment)}[/]")
+        return "".join(parts)
 
     def _scroll_to_cursor(self, position: int, target_length: int) -> None:
         if target_length == 0:
@@ -173,6 +334,7 @@ class LessonScreen(Screen):
     def _finish(self) -> None:
         if self._timer:
             self._timer.stop()
+        self._persist_book_progress()
         s = self._scorer
         app = self.app          # type: ignore[attr-defined]
         if app.config.manual_difficulty:
@@ -208,10 +370,12 @@ class LessonScreen(Screen):
     def action_quit_lesson(self) -> None:
         if self._timer:
             self._timer.stop()
+        self._persist_book_progress()
         self.app.pop_screen()
 
     def action_go_menu(self) -> None:
         if self._timer:
             self._timer.stop()
+        self._persist_book_progress()
         from typingapp.screens.menu import MenuScreen
         self.app.switch_screen(MenuScreen())
