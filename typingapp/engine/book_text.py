@@ -45,6 +45,31 @@ def paragraphs(full_text: str) -> list[tuple[str, str]]:
     return result
 
 
+def strip_heading_markup(full_text: str) -> tuple[str, list[tuple[str, int, int]]]:
+    """Remove '# ' heading markers (they're markup, not something the user should have to type)
+    and return (stripped_text, spans), where spans are (kind, start, end) character offsets into
+    stripped_text for each paragraph's content. Used to build the literal text a lesson makes the
+    user type, plus enough structure to render it paragraph-aware without re-parsing markup that
+    no longer exists in the typed string."""
+    out_parts: list[str] = []
+    spans: list[tuple[str, int, int]] = []
+    pos = 0
+    for block in re.split(r"(\n\s*\n)", full_text):
+        if block.strip() == "" and "\n" in block:
+            out_parts.append(block)
+            pos += len(block)
+            continue
+        if block.startswith("# "):
+            kind, content = "heading", block[2:]
+        else:
+            kind, content = "paragraph", block
+        if content:
+            spans.append((kind, pos, pos + len(content)))
+        out_parts.append(content)
+        pos += len(content)
+    return "".join(out_parts), spans
+
+
 def chunk_from_offset(full_text: str, start_offset: int, target_word_count: int, max_words: int) -> tuple[str, int]:
     """Return (chunk_text, end_offset), always ending at a paragraph boundary (or a sentence
     boundary if a single paragraph alone exceeds max_words)."""

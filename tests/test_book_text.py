@@ -1,6 +1,6 @@
 import pytest
 from typingapp.engine.book_text import (
-    normalize_gutenberg_text, paragraphs, chunk_from_offset, page_info, CHARS_PER_PAGE,
+    normalize_gutenberg_text, paragraphs, strip_heading_markup, chunk_from_offset, page_info, CHARS_PER_PAGE,
 )
 
 
@@ -24,6 +24,20 @@ def test_paragraphs_splits_on_blank_lines_and_tags_headings():
         ("paragraph", "First paragraph."),
         ("paragraph", "Second paragraph."),
     ]
+
+
+def test_strip_heading_markup_removes_marker_and_reports_spans_in_stripped_offsets():
+    text = "# Chapter One\n\nFirst paragraph text.\n\nSecond paragraph here."
+    stripped, spans = strip_heading_markup(text)
+    assert "# " not in stripped
+    assert [(kind, stripped[s:e]) for kind, s, e in spans] == [
+        ("heading", "Chapter One"),
+        ("paragraph", "First paragraph text."),
+        ("paragraph", "Second paragraph here."),
+    ]
+    # stripping shouldn't touch paragraph separators — chunk_from_offset's boundary logic
+    # still needs to see the same blank-line structure
+    assert stripped == "Chapter One\n\nFirst paragraph text.\n\nSecond paragraph here."
 
 
 def test_chunk_from_offset_stops_at_paragraph_boundary():
