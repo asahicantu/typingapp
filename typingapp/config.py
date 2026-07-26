@@ -20,6 +20,7 @@ class AppConfig:
     word_count_override: int = 0
     selected_book_id: str = ""
     epub_folder: str = ""
+    highlight_past_mistakes: bool = True
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

@@ -56,3 +56,13 @@ def test_manual_difficulty_and_word_count_override_roundtrip(tmp_path):
     loaded = load_config(path)
     assert loaded.manual_difficulty is True
     assert loaded.word_count_override == 40
+
+
+def test_highlight_past_mistakes_defaults_true_and_roundtrips(tmp_path):
+    cfg = AppConfig()
+    assert cfg.highlight_past_mistakes is True
+    cfg.highlight_past_mistakes = False
+    path = tmp_path / "config.json"
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.highlight_past_mistakes is False

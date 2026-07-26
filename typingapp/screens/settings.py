@@ -131,6 +131,9 @@ class SettingsScreen(Screen):
             with Horizontal(classes="setting-row"):
                 yield Label("Key sounds")
                 yield Switch(value=cfg.key_sounds, id="sw-sound")
+            with Horizontal(classes="setting-row"):
+                yield Label("Highlight previously mistyped words")
+                yield Switch(value=cfg.highlight_past_mistakes, id="sw-highlight-mistakes")
             yield Static("")
 
             yield Button("💾  Save & Back", id="btn-save", variant="primary")
@@ -168,6 +171,7 @@ class SettingsScreen(Screen):
             cfg.show_live_wpm = self.query_one("#sw-wpm", Switch).value
             cfg.show_hints = self.query_one("#sw-hints", Switch).value
             cfg.key_sounds = self.query_one("#sw-sound", Switch).value
+            cfg.highlight_past_mistakes = self.query_one("#sw-highlight-mistakes", Switch).value
             sel_content = self.query_one("#sel-content", Select)
             if sel_content.value != Select.BLANK:
                 cfg.content_type = sel_content.value
