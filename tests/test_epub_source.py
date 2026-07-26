@@ -1,5 +1,5 @@
 import zipfile
-from typingapp.engine.epub_source import scan_epub_folder, parse_epub, epub_to_flat_text, DocNode
+from typingapp.engine.epub_source import scan_epub_folder, parse_epub, epub_to_flat_text, epub_book_id, DocNode
 
 CONTAINER_XML = """<?xml version="1.0"?>
 <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
@@ -97,3 +97,13 @@ def test_epub_to_flat_text_matches_markup_convention():
     nodes = [DocNode("heading", "Title"), DocNode("paragraph", "Body text.")]
     flat = epub_to_flat_text(nodes)
     assert flat == "# Title\n\nBody text."
+
+
+def test_epub_book_id_stable_across_calls_for_same_path(tmp_path):
+    path = str(tmp_path / "book.epub")
+    assert epub_book_id(path) == epub_book_id(path)
+    assert epub_book_id(path).startswith("epub:")
+
+
+def test_epub_book_id_differs_for_different_paths(tmp_path):
+    assert epub_book_id(str(tmp_path / "a.epub")) != epub_book_id(str(tmp_path / "b.epub"))

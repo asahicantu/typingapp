@@ -1,9 +1,25 @@
 from __future__ import annotations
+import datetime
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Button, Switch, Select, Label
+from textual.widgets import Static, Button, Switch, Select, Label, Input
 from textual.containers import Vertical, Horizontal, ScrollableContainer
 from typingapp.config import save_config
+from typingapp.engine.book_text import page_info, normalize_gutenberg_text
+from typingapp.engine.gutenberg import BookMeta, fetch_full_text
+from typingapp.engine.epub_source import parse_epub, epub_to_flat_text
+
+
+def _book_display_text(app) -> str:
+    cfg = app.config
+    if not cfg.selected_book_id:
+        return "(none — random excerpts)"
+    book = app.storage.get_book(cfg.selected_book_id)
+    if book is None:
+        return f"{cfg.selected_book_id} (not cached yet)"
+    offset = app.storage.fetch_book_progress(cfg.selected_book_id)
+    page, total_pages, pct = page_info(book["total_chars"], offset)
+    return f"{book['title']} — {book['author']}  ({pct:.0f}% · page {page}/{total_pages})"
 
 
 class SettingsScreen(Screen):
@@ -70,6 +86,18 @@ class SettingsScreen(Screen):
                 )
             yield Static("")
 
+            yield Static("BOOKS", classes="stat-label")
+            with Horizontal(classes="setting-row"):
+                yield Label("Local EPUB folder")
+                yield Input(value=cfg.epub_folder, placeholder="/path/to/epub/folder", id="input-epub-folder")
+            with Horizontal(classes="setting-row"):
+                yield Label("Selected book")
+                yield Static(_book_display_text(self.app), id="selected-book-val")
+            with Horizontal(classes="setting-row"):
+                yield Button("📚  Browse Books", id="btn-browse-books")
+                yield Button("✕  Clear Selection", id="btn-clear-book")
+            yield Static("")
+
             yield Static("DISPLAY", classes="stat-label")
             with Horizontal(classes="setting-row"):
                 yield Label("Show live WPM")
@@ -113,10 +141,53 @@ class SettingsScreen(Screen):
             sel_word_count = self.query_one("#sel-word-count", Select)
             if sel_word_count.value != Select.BLANK:
                 cfg.word_count_override = sel_word_count.value
+            cfg.epub_folder = self.query_one("#input-epub-folder", Input).value
             save_config(cfg)
             self.app.pop_screen()
         elif event.button.id == "btn-cancel":
             self.app.pop_screen()
+        elif event.button.id == "btn-browse-books":
+            from typingapp.screens.book_search import BookSearchScreen
+            self.app.push_screen(BookSearchScreen(on_select=self._pin_book))
+        elif event.button.id == "btn-clear-book":
+            app = self.app          # type: ignore[attr-defined]
+            app.config.selected_book_id = ""
+            save_config(app.config)
+            self.query_one("#selected-book-val", Static).update(_book_display_text(app))
+
+    def _pin_book(self, result: dict) -> None:
+        app = self.app          # type: ignore[attr-defined]
+        book_id = result["book_id"]
+        if app.storage.get_book(book_id) is None:
+            full_text = self._fetch_book_text(result)
+            if full_text is None:
+                self.query_one("#selected-book-val", Static).update(
+                    f"⚠ Couldn't load '{result['title']}' — book not cached"
+                )
+                self.app.pop_screen()
+                return
+            app.storage.upsert_book(
+                book_id=book_id, source=result["source"], title=result["title"], author=result["author"],
+                language=app.config.language, full_text=full_text,
+                cached_at=datetime.datetime.now().isoformat(),
+            )
+        app.config.selected_book_id = book_id
+        save_config(app.config)
+        self.app.pop_screen()
+        self.query_one("#selected-book-val", Static).update(_book_display_text(app))
+
+    def _fetch_book_text(self, result: dict) -> str | None:
+        if result["source"] == "epub":
+            nodes = parse_epub(result["path"])
+            if nodes is None:
+                return None
+            return epub_to_flat_text(nodes)
+        book = BookMeta(
+            gutenberg_id=int(result["book_id"].split(":", 1)[1]),
+            title=result["title"], author=result["author"], text_url=result["text_url"],
+        )
+        raw = fetch_full_text(book)
+        return normalize_gutenberg_text(raw) if raw is not None else None
 
     def action_go_back(self) -> None:
         self.app.pop_screen()

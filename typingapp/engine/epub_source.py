@@ -1,4 +1,5 @@
 from __future__ import annotations
+import hashlib
 import os
 import posixpath
 import zipfile
@@ -58,6 +59,11 @@ class _BodyTextParser(HTMLParser):
         if any(t in SKIP_TAGS for t in self._tag_stack):
             return
         self._buffer.append(data)
+
+
+def epub_book_id(path: str) -> str:
+    """Stable book_id for an EPUB file, derived from its absolute path."""
+    return f"epub:{hashlib.sha1(os.path.abspath(path).encode()).hexdigest()[:16]}"
 
 
 def scan_epub_folder(folder: str) -> list[EpubMeta]:
