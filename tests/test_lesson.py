@@ -1,5 +1,6 @@
 import pytest
-from typingapp.engine.lesson import LessonEngine
+from typingapp.engine.lesson import LessonEngine, BOOK_COMPLETE_SENTINEL
+from typingapp.data.storage import Storage
 
 
 def test_words_lesson_returns_string():
@@ -121,3 +122,57 @@ def test_get_lesson_accepts_recent_wpm_and_session_duration_for_sizing():
     # word-count content_type still uses WORD_COUNTS by difficulty (unaffected by sizing params);
     # this test only confirms the new kwargs are accepted without raising
     assert isinstance(short, str) and isinstance(long_, str)
+
+
+def test_literature_without_selected_book_is_unchanged(monkeypatch):
+    # regression guard: selected_book_id="" must take the pre-existing random-excerpt path
+    import typingapp.engine.lesson as lesson_module
+    monkeypatch.setattr(lesson_module, "search_books", lambda *a, **k: [])
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="literature", difficulty=3, language="en", storage=None,
+                                selected_book_id="")
+    assert len(lesson.strip()) > 0
+    assert engine._last_chunk_book_id == ""
+
+
+def test_sequential_book_reading_starts_at_stored_offset(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    first_para = "One two three four five."
+    second_para = "Six seven eight nine ten."
+    full_text = f"{first_para}\n\n{second_para}\n\nEleven twelve thirteen."
+    start_offset = len(f"{first_para}\n\n")
+    storage.upsert_book(book_id="gutenberg:1", source="gutenberg", title="T", author="A",
+                         language="en", full_text=full_text, cached_at="2026-07-26T10:00:00")
+    storage.update_book_progress("gutenberg:1", current_offset=start_offset, updated_at="2026-07-26T10:00:00")
+
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="literature", difficulty=3, language="en", storage=storage,
+                                recent_wpm=30, session_duration=30, selected_book_id="gutenberg:1")
+    assert lesson.startswith("Six seven")
+    assert engine._last_chunk_start_offset == start_offset
+    assert engine._last_chunk_book_id == "gutenberg:1"
+    storage.close()
+
+
+def test_sequential_book_reading_fallback_reason_when_book_missing(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="literature", difficulty=3, language="en", storage=storage,
+                                selected_book_id="gutenberg:999")
+    assert len(lesson.strip()) > 0
+    assert engine.last_fallback_reason is not None
+    storage.close()
+
+
+def test_sequential_book_reading_returns_sentinel_when_complete(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    full_text = "Short book."
+    storage.upsert_book(book_id="gutenberg:1", source="gutenberg", title="T", author="A",
+                         language="en", full_text=full_text, cached_at="2026-07-26T10:00:00")
+    storage.update_book_progress("gutenberg:1", current_offset=len(full_text), updated_at="2026-07-26T10:00:00")
+
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="literature", difficulty=3, language="en", storage=storage,
+                                selected_book_id="gutenberg:1")
+    assert lesson == BOOK_COMPLETE_SENTINEL
+    storage.close()

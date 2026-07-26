@@ -18,6 +18,8 @@ class AppConfig:
     language: str = "en"
     manual_difficulty: bool = False
     word_count_override: int = 0
+    selected_book_id: str = ""
+    epub_folder: str = ""
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

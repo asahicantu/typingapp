@@ -52,7 +52,13 @@ def chunk_from_offset(full_text: str, start_offset: int, target_word_count: int,
     if not remaining.strip():
         return "", start_offset
 
-    blocks = re.split(r"(\n\s*\n)", remaining)
+    lstripped = remaining.lstrip()
+    leading_skip = len(remaining) - len(lstripped)
+
+    # lstripped never starts with whitespace, so the first block from this split is always real
+    # paragraph content — that keeps consumed_len exactly in sync with the (unstripped-on-the-left)
+    # chunk text, so callers can rely on start_offset + len(chunk_text) == end_offset.
+    blocks = re.split(r"(\n\s*\n)", lstripped)
     word_count = 0
     consumed_len = 0
     chunk_parts: list[str] = []
@@ -86,7 +92,7 @@ def chunk_from_offset(full_text: str, start_offset: int, target_word_count: int,
             break
 
     chunk_text = "".join(chunk_parts).strip()
-    end_offset = start_offset + consumed_len
+    end_offset = start_offset + leading_skip + consumed_len
     return chunk_text, end_offset
 
 

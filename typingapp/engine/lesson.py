@@ -6,10 +6,12 @@ from typingapp.engine.content.code_snippets import SNIPPETS
 from typingapp.engine.markov import build_chain
 from typingapp.engine.gutenberg import search_books, fetch_excerpt
 from typingapp.engine.text_sizing import estimate_word_count
+from typingapp.engine.book_text import chunk_from_offset
 
 WORD_COUNTS = {1: 10, 2: 15, 3: 20, 4: 25, 5: 30, 6: 40, 7: 50, 8: 60, 9: 80, 10: 100}
 SUPPORTED_LANGUAGES = {"en", "es", "fr"}
 CACHE_REFRESH_THRESHOLD = 5
+BOOK_COMPLETE_SENTINEL = "\x00__BOOK_COMPLETE__\x00"
 
 
 def _content_filename(base: str, language: str) -> str:
@@ -27,6 +29,9 @@ class LessonEngine:
         self._words_cache: dict[str, list[str]] = {}
         self._sentences_cache: dict[str, list[str]] = {}
         self.last_fallback_reason: str | None = None
+        self._last_chunk_start_offset: int = 0
+        self._last_chunk_end_offset: int = 0
+        self._last_chunk_book_id: str = ""
 
     def _words(self, language: str) -> list[str]:
         if language not in self._words_cache:
@@ -49,6 +54,7 @@ class LessonEngine:
         recent_wpm: float = 0,
         session_duration: int = 60,
         word_count_override: int = 0,
+        selected_book_id: str = "",
     ) -> str:
         self.last_fallback_reason = None
         if content_type == "custom":
@@ -60,6 +66,10 @@ class LessonEngine:
         if content_type == "random_sentences":
             return self._build_random_sentences(language, recent_wpm, session_duration, storage)
         if content_type == "literature":
+            if selected_book_id:
+                return self._build_sequential_book_lesson(
+                    selected_book_id, language, recent_wpm, session_duration, storage
+                )
             return self._build_literature_lesson(language, recent_wpm, session_duration, storage)
         return self._build_word_lesson(difficulty, weak_bigrams or [], language, word_count_override)
 
@@ -121,3 +131,28 @@ class LessonEngine:
 
         self.last_fallback_reason = "Couldn't reach Project Gutenberg — showing locally generated text instead"
         return self._build_random_sentences(language, recent_wpm, session_duration, storage)
+
+    def _build_sequential_book_lesson(
+        self, book_id: str, language: str, recent_wpm: float, session_duration: int, storage
+    ) -> str:
+        book = storage.get_book(book_id) if storage is not None else None
+        if book is None:
+            self.last_fallback_reason = "Selected book isn't cached yet — showing locally generated text instead"
+            return self._build_random_sentences(language, recent_wpm, session_duration, storage)
+
+        offset = storage.fetch_book_progress(book_id)
+        if offset >= book["total_chars"]:
+            self._last_chunk_book_id = book_id
+            self._last_chunk_start_offset = offset
+            self._last_chunk_end_offset = offset
+            return BOOK_COMPLETE_SENTINEL
+
+        word_count = estimate_word_count(recent_wpm, session_duration)
+        max_words = max(word_count * 2, 20)
+        chunk_text, end_offset = chunk_from_offset(
+            book["full_text"], start_offset=offset, target_word_count=word_count, max_words=max_words
+        )
+        self._last_chunk_book_id = book_id
+        self._last_chunk_start_offset = offset
+        self._last_chunk_end_offset = end_offset
+        return chunk_text

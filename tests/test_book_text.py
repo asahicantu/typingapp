@@ -63,6 +63,20 @@ def test_page_info_arithmetic():
     assert pct == pytest.approx(33.33, abs=0.5)
 
 
+def test_chunk_from_offset_chains_correctly_across_paragraph_boundaries():
+    # regression: end_offset from one call must let the next call pick up the very next
+    # paragraph exactly, with no characters skipped or duplicated, even though the returned
+    # chunk text itself is stripped of the leading separator whitespace.
+    text = "One two three four five.\n\nSix seven eight nine ten.\n\nEleven twelve thirteen."
+    chunk1, end1 = chunk_from_offset(text, 0, target_word_count=5, max_words=10)
+    chunk2, end2 = chunk_from_offset(text, end1, target_word_count=5, max_words=10)
+    chunk3, end3 = chunk_from_offset(text, end2, target_word_count=5, max_words=10)
+    assert chunk1 == "One two three four five."
+    assert chunk2 == "Six seven eight nine ten."
+    assert chunk3 == "Eleven twelve thirteen."
+    assert end3 == len(text)
+
+
 def test_page_info_at_start_and_end():
     page, total_pages, pct = page_info(1000, 0)
     assert page == 1 and pct == 0
