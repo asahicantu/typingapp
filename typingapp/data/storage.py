@@ -60,6 +60,12 @@ CREATE TABLE IF NOT EXISTS book_progress (
     updated_at TEXT NOT NULL
 )"""
 
+CREATE_WORD_MISTAKES = """
+CREATE TABLE IF NOT EXISTS word_mistakes (
+    word TEXT PRIMARY KEY,
+    miss_count INTEGER NOT NULL DEFAULT 0
+)"""
+
 
 @dataclass
 class SessionRecord:
@@ -103,6 +109,7 @@ class Storage:
         self._conn.execute(CREATE_GUTENBERG_CACHE)
         self._conn.execute(CREATE_BOOKS)
         self._conn.execute(CREATE_BOOK_PROGRESS)
+        self._conn.execute(CREATE_WORD_MISTAKES)
         self._conn.commit()
 
     def insert_session(self, rec: SessionRecord) -> int:
@@ -232,6 +239,23 @@ class Storage:
             (limit,),
         ).fetchall()
         return [dict(r) for r in rows]
+
+    def record_word_mistakes(self, word_counts: dict[str, int]) -> None:
+        if not word_counts:
+            return
+        self._conn.executemany(
+            "INSERT INTO word_mistakes (word, miss_count) VALUES (?, ?) "
+            "ON CONFLICT(word) DO UPDATE SET miss_count = miss_count + excluded.miss_count",
+            list(word_counts.items()),
+        )
+        self._conn.commit()
+
+    def fetch_frequently_missed_words(self, min_misses: int = 2, limit: int = 200) -> set[str]:
+        rows = self._conn.execute(
+            "SELECT word FROM word_mistakes WHERE miss_count >= ? ORDER BY miss_count DESC LIMIT ?",
+            (min_misses, limit),
+        ).fetchall()
+        return {r["word"] for r in rows}
 
     def close(self) -> None:
         self._conn.close()

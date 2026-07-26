@@ -188,3 +188,41 @@ def test_list_books_with_progress_orders_by_most_recently_updated(tmp_path):
     assert books[0]["current_offset"] == 5
     assert books[1]["current_offset"] == 0
     s.close()
+
+
+def test_record_word_mistakes_creates_new_entries(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.record_word_mistakes({"the": 2, "quick": 1})
+    missed = s.fetch_frequently_missed_words(min_misses=1)
+    assert missed == {"the", "quick"}
+    s.close()
+
+
+def test_record_word_mistakes_accumulates_across_calls(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.record_word_mistakes({"the": 2})
+    s.record_word_mistakes({"the": 3, "fox": 1})
+    # "the" should now have 5 cumulative misses, "fox" only 1
+    assert s.fetch_frequently_missed_words(min_misses=4) == {"the"}
+    assert s.fetch_frequently_missed_words(min_misses=1) == {"the", "fox"}
+    s.close()
+
+
+def test_fetch_frequently_missed_words_respects_min_misses_threshold(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.record_word_mistakes({"rare": 1, "common": 10})
+    assert s.fetch_frequently_missed_words(min_misses=2) == {"common"}
+    s.close()
+
+
+def test_fetch_frequently_missed_words_empty_when_no_data(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    assert s.fetch_frequently_missed_words() == set()
+    s.close()
+
+
+def test_record_word_mistakes_with_empty_dict_is_a_noop(tmp_path):
+    s = Storage(tmp_path / "test.db")
+    s.record_word_mistakes({})
+    assert s.fetch_frequently_missed_words(min_misses=1) == set()
+    s.close()
