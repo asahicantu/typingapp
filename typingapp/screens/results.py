@@ -1,7 +1,7 @@
 from __future__ import annotations
 from textual.app import ComposeResult
 from textual.screen import Screen
-from textual.widgets import Static, Button, Label
+from textual.widgets import Static, Label
 from textual.containers import ScrollableContainer, Horizontal, VerticalScroll
 
 from typingapp.engine.scorer import Scorer
@@ -24,6 +24,10 @@ class ResultsScreen(Screen):
         ("w", "jump_words", "Words"),
         ("right", "focus_next_card", "Next Card"),
         ("left", "focus_previous_card", "Previous Card"),
+        ("r", "retry_same", "Retry Same"),
+        ("n", "new_lesson", "New Lesson"),
+        ("h", "view_history", "History"),
+        ("m", "go_menu", "Menu"),
     ]
 
     def __init__(self, scorer: Scorer, session_id: int) -> None:
@@ -84,10 +88,11 @@ class ResultsScreen(Screen):
                         yield Static(ranked_bars(mistaken_words), id="word-chart")
 
             yield Static("")
-            yield Button("▶  Retry Same", id="btn-retry", variant="primary")
-            yield Button("🔀  New Lesson", id="btn-new")
-            yield Button("📊  View History", id="btn-history")
-            yield Button("🏠  Menu", id="btn-menu")
+            with Horizontal(id="results-commands"):
+                yield Static("[R] Retry Same", classes="command-item")
+                yield Static("[N] New Lesson", classes="command-item")
+                yield Static("[H] History", classes="command-item")
+                yield Static("[Esc/M] Menu", classes="command-item")
 
     def _session_mistake_bigrams(self, limit: int = 5) -> list[tuple[str, int]]:
         counts: dict[str, int] = {}
@@ -96,22 +101,21 @@ class ResultsScreen(Screen):
                 counts[ks.bigram] = counts.get(ks.bigram, 0) + 1
         return sorted(counts.items(), key=lambda kv: kv[1], reverse=True)[:limit]
 
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        from typingapp.screens.lesson import LessonScreen
-        from typingapp.screens.history import HistoryScreen
-        from typingapp.screens.menu import MenuScreen
-        if event.button.id == "btn-retry":
-            self.app.switch_screen(LessonScreen())
-        elif event.button.id == "btn-new":
-            self.app.switch_screen(LessonScreen())
-        elif event.button.id == "btn-history":
-            self.app.push_screen(HistoryScreen())
-        elif event.button.id == "btn-menu":
-            self.app.switch_screen(MenuScreen())
-
     def action_go_menu(self) -> None:
         from typingapp.screens.menu import MenuScreen
         self.app.switch_screen(MenuScreen())
+
+    def action_retry_same(self) -> None:
+        from typingapp.screens.lesson import LessonScreen
+        self.app.switch_screen(LessonScreen())
+
+    def action_new_lesson(self) -> None:
+        from typingapp.screens.lesson import LessonScreen
+        self.app.switch_screen(LessonScreen())
+
+    def action_view_history(self) -> None:
+        from typingapp.screens.history import HistoryScreen
+        self.app.push_screen(HistoryScreen())
 
     def action_jump_performance(self) -> None:
         self._jump_to("#section-performance")

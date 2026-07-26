@@ -12,7 +12,12 @@
       "Bash(python -m pytest tests/test_lesson.py -v)",
       "Bash(python -m pytest tests/test_adaptive.py -v)",
       "Bash(python -m pytest tests/test_recommender.py -v)",
-      "Bash(python *)"
+      "Bash(python *)",
+      "Bash(tmux new-session *)",
+      "Bash(tmux capture-pane *)",
+      "Bash(xargs -I{} echo {})",
+      "Bash(PYTHONPATH=\"/c/Users/asahi/source/claude/typingapp\" python \"/c/Users/asahi/AppData/Local/Temp/claude/C--Users-asahi-source-claude-typingapp/a0326443-7c72-48d6-97b4-5d83ec8d8989/scratchpad/smoke_settings.py\")",
+      "Bash(PYTHONPATH=\"/c/Users/asahi/source/claude/typingapp\" python \"/c/Users/asahi/AppData/Local/Temp/claude/C--Users-asahi-source-claude-typingapp/a0326443-7c72-48d6-97b4-5d83ec8d8989/scratchpad/smoke_lesson.py\")"
     ]
   }
 }

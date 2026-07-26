@@ -16,6 +16,8 @@ class AppConfig:
     show_hints: bool = True
     key_sounds: bool = True
     language: str = "en"
+    manual_difficulty: bool = False
+    word_count_override: int = 0
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

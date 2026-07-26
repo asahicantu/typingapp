@@ -50,6 +50,26 @@ class SettingsScreen(Screen):
                 )
             yield Static("")
 
+            yield Static("DIFFICULTY & WORD COUNT", classes="stat-label")
+            with Horizontal(classes="setting-row"):
+                yield Label("Manual difficulty (disable auto-adaptive)")
+                yield Switch(value=cfg.manual_difficulty, id="sw-manual-difficulty")
+            with Horizontal(classes="setting-row"):
+                yield Label("Difficulty level")
+                yield Select(
+                    options=[(str(n), n) for n in range(1, 11)],
+                    value=cfg.difficulty if cfg.difficulty else 1,
+                    id="sel-difficulty",
+                )
+            with Horizontal(classes="setting-row"):
+                yield Label("Words per lesson")
+                yield Select(
+                    options=[("Auto (by difficulty)", 0)] + [(str(n), n) for n in (10, 15, 20, 25, 30, 40, 50, 60, 80, 100)],
+                    value=cfg.word_count_override,
+                    id="sel-word-count",
+                )
+            yield Static("")
+
             yield Static("DISPLAY", classes="stat-label")
             with Horizontal(classes="setting-row"):
                 yield Label("Show live WPM")
@@ -86,6 +106,13 @@ class SettingsScreen(Screen):
             sel_lang = self.query_one("#sel-language", Select)
             if sel_lang.value != Select.BLANK:
                 cfg.language = sel_lang.value
+            cfg.manual_difficulty = self.query_one("#sw-manual-difficulty", Switch).value
+            sel_difficulty = self.query_one("#sel-difficulty", Select)
+            if sel_difficulty.value != Select.BLANK:
+                cfg.difficulty = sel_difficulty.value
+            sel_word_count = self.query_one("#sel-word-count", Select)
+            if sel_word_count.value != Select.BLANK:
+                cfg.word_count_override = sel_word_count.value
             save_config(cfg)
             self.app.pop_screen()
         elif event.button.id == "btn-cancel":

@@ -35,15 +35,17 @@ class LessonScreen(Screen):
         weak = [b["bigram"] for b in bigrams]
         recent_wpms = storage.fetch_last_n_wpm(n=5)
         recent_wpm = sum(recent_wpms) / len(recent_wpms) if recent_wpms else 0
+        difficulty = cfg.difficulty if cfg.manual_difficulty else adaptive.current_level
         return app.lesson_engine.get_lesson(
             content_type=cfg.content_type,
-            difficulty=adaptive.current_level,
+            difficulty=difficulty,
             custom_text=self._custom_text,
             weak_bigrams=weak,
             language=cfg.language,
             storage=storage,
             recent_wpm=recent_wpm,
             session_duration=cfg.session_duration,
+            word_count_override=cfg.word_count_override,
         )
 
     def compose(self) -> ComposeResult:
@@ -173,12 +175,15 @@ class LessonScreen(Screen):
             self._timer.stop()
         s = self._scorer
         app = self.app          # type: ignore[attr-defined]
-        new_level = app.adaptive.update_level(s.wpm, s.accuracy)
-        app.config.difficulty = new_level
+        if app.config.manual_difficulty:
+            session_difficulty = app.config.difficulty
+        else:
+            session_difficulty = app.adaptive.update_level(s.wpm, s.accuracy)
+            app.config.difficulty = session_difficulty
         rec = SessionRecord(
             timestamp=datetime.datetime.now().isoformat(),
             content_type=app.config.content_type,
-            difficulty=app.adaptive.current_level,
+            difficulty=session_difficulty,
             duration_seconds=int(s.elapsed_seconds),
             wpm=round(s.wpm, 2),
             accuracy=round(s.accuracy, 2),
