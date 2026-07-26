@@ -15,6 +15,7 @@ class AppConfig:
     show_live_wpm: bool = True
     show_hints: bool = True
     key_sounds: bool = True
+    language: str = "en"
 
 
 def load_config(path: Path = DEFAULT_CONFIG_PATH) -> AppConfig:

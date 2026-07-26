@@ -3,7 +3,7 @@ import datetime
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import Static, Label, ProgressBar
-from textual.containers import Vertical, Horizontal
+from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.timer import Timer
 
 from typingapp.engine.scorer import Scorer
@@ -33,11 +33,17 @@ class LessonScreen(Screen):
         storage = app.storage
         bigrams = storage.fetch_bigram_heatmap(limit=5)
         weak = [b["bigram"] for b in bigrams]
+        recent_wpms = storage.fetch_last_n_wpm(n=5)
+        recent_wpm = sum(recent_wpms) / len(recent_wpms) if recent_wpms else 0
         return app.lesson_engine.get_lesson(
             content_type=cfg.content_type,
             difficulty=adaptive.current_level,
             custom_text=self._custom_text,
             weak_bigrams=weak,
+            language=cfg.language,
+            storage=storage,
+            recent_wpm=recent_wpm,
+            session_duration=cfg.session_duration,
         )
 
     def compose(self) -> ComposeResult:
@@ -52,7 +58,8 @@ class LessonScreen(Screen):
                 yield Label("  ✗ ERR: ", classes="stat-label")
                 yield Label("0", id="err-val", classes="stat-value err-value")
             yield ProgressBar(total=100, show_eta=False, id="progress-bar")
-            yield Static("", id="text-display")
+            with VerticalScroll(id="text-scroll"):
+                yield Static("", id="text-display")
             yield Label("", id="hint-bar", classes="hint-bar")
             yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu", classes="stat-label")
 
@@ -79,6 +86,31 @@ class LessonScreen(Screen):
         self.query_one("#err-val", Label).update(str(s.error_count))
         pct = int((s.position / max(len(s.target), 1)) * 100)
         self.query_one("#progress-bar", ProgressBar).update(progress=pct)
+        self._maybe_extend_text()
+
+    def _maybe_extend_text(self) -> None:
+        app = self.app      # type: ignore[attr-defined]
+        s = self._scorer
+        if s is None:
+            return
+        cfg = app.config
+        time_remaining = cfg.session_duration - s.elapsed_seconds
+        chars_remaining = len(s.target) - s.position
+        near_end = chars_remaining <= max(20, len(s.target) * 0.15)
+        if near_end and time_remaining > 5 and cfg.content_type in ("literature", "random_sentences"):
+            try:
+                more_text = app.lesson_engine.get_lesson(
+                    content_type=cfg.content_type,
+                    difficulty=app.adaptive.current_level,
+                    language=cfg.language,
+                    storage=app.storage,
+                    recent_wpm=s.wpm,
+                    session_duration=max(int(time_remaining), 15),
+                )
+            except Exception:
+                more_text = ""
+            if more_text:
+                s.extend(" " + more_text)
 
     def _render_text(self) -> None:
         if self._scorer is None:
@@ -92,7 +124,24 @@ class LessonScreen(Screen):
         if pos < len(target):
             cursor = f"[bold on red]{target[pos]}[/]"
             rest = f"[dim]{target[pos+1:]}[/]"
-        self.query_one("#text-display", Static).update(typed + cursor + rest)
+        display = self.query_one("#text-display", Static)
+        display.update(typed + cursor + rest)
+        self._scroll_to_cursor(pos, len(target))
+
+    def _scroll_to_cursor(self, position: int, target_length: int) -> None:
+        if target_length == 0:
+            return
+        scroll_container = self.query_one("#text-scroll", VerticalScroll)
+        display = self.query_one("#text-display", Static)
+        width = display.size.width or scroll_container.size.width
+        if width <= 0:
+            return
+        content_height = display.get_content_height(scroll_container.size, self.size, width)
+        if content_height <= 0:
+            return
+        progress_ratio = position / target_length
+        target_scroll_y = max(0, int(content_height * progress_ratio) - int(scroll_container.size.height / 3))
+        scroll_container.scroll_to(y=target_scroll_y, animate=False)
 
     def on_key(self, event) -> None:
         if self._scorer is None or self._paused or self._scorer.is_complete:

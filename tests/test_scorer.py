@@ -119,3 +119,25 @@ def test_strict_mode_retries_count_once_per_error():
     s.process_key("x")
     s.process_key("h")
     assert s.word_errors == {"hi": 2}
+
+
+def test_extend_appends_to_target_without_resetting_position():
+    s = Scorer("ab", strict_mode=False)
+    s.start()
+    s.process_key("a")
+    s.process_key("b")
+    assert s.is_complete
+    s.extend(" cd")
+    assert s.target == "ab cd"
+    assert s.position == 2
+    assert not s.is_complete
+
+
+def test_extend_preserves_stats():
+    s = Scorer("ab", strict_mode=False)
+    s.start()
+    s.process_key("a")
+    s.process_key("x")  # one error
+    s.extend(" cd")
+    assert s.error_count == 1
+    assert len(s.keystrokes) == 2

@@ -26,8 +26,11 @@ class SettingsScreen(Screen):
             with Horizontal(classes="setting-row"):
                 yield Label("Content type")
                 yield Select(
-                    options=[("Words", "words"), ("Sentences", "sentences"),
-                             ("Code", "code"), ("Custom", "custom")],
+                    options=[
+                        ("Words", "words"), ("Sentences", "sentences"),
+                        ("Random Sentences", "random_sentences"), ("Literature", "literature"),
+                        ("Code", "code"), ("Custom", "custom"),
+                    ],
                     value=cfg.content_type,
                     id="sel-content",
                 )
@@ -37,6 +40,13 @@ class SettingsScreen(Screen):
                     options=[("30s", 30), ("60s", 60), ("120s", 120)],
                     value=cfg.session_duration,
                     id="sel-duration",
+                )
+            with Horizontal(classes="setting-row"):
+                yield Label("Language")
+                yield Select(
+                    options=[("English", "en"), ("Espanol", "es"), ("Francais", "fr")],
+                    value=cfg.language,
+                    id="sel-language",
                 )
             yield Static("")
 
@@ -73,6 +83,9 @@ class SettingsScreen(Screen):
             sel_dur = self.query_one("#sel-duration", Select)
             if sel_dur.value != Select.BLANK:
                 cfg.session_duration = sel_dur.value
+            sel_lang = self.query_one("#sel-language", Select)
+            if sel_lang.value != Select.BLANK:
+                cfg.language = sel_lang.value
             save_config(cfg)
             self.app.pop_screen()
         elif event.button.id == "btn-cancel":

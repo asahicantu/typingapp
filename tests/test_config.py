@@ -28,3 +28,16 @@ def test_load_missing_file_returns_defaults(tmp_path):
     path = tmp_path / "nonexistent.json"
     cfg = load_config(path)
     assert cfg == AppConfig()
+
+
+def test_default_language_is_english():
+    cfg = AppConfig()
+    assert cfg.language == "en"
+
+
+def test_language_roundtrips_through_save_and_load(tmp_path):
+    cfg = AppConfig(language="es")
+    path = tmp_path / "config.json"
+    save_config(cfg, path)
+    loaded = load_config(path)
+    assert loaded.language == "es"

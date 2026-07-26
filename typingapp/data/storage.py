@@ -30,6 +30,17 @@ CREATE TABLE IF NOT EXISTS keystrokes (
     timestamp_ms INTEGER NOT NULL
 )"""
 
+CREATE_GUTENBERG_CACHE = """
+CREATE TABLE IF NOT EXISTS gutenberg_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gutenberg_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    author TEXT NOT NULL,
+    language TEXT NOT NULL,
+    excerpt TEXT NOT NULL,
+    fetched_at TEXT NOT NULL
+)"""
+
 
 @dataclass
 class SessionRecord:
@@ -52,6 +63,16 @@ class KeystrokeRecord:
     timestamp_ms: int
 
 
+@dataclass
+class GutenbergExcerpt:
+    gutenberg_id: int
+    title: str
+    author: str
+    language: str
+    excerpt: str
+    fetched_at: str
+
+
 class Storage:
     def __init__(self, path: Path = DEFAULT_DB_PATH) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -60,6 +81,7 @@ class Storage:
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._conn.execute(CREATE_SESSIONS)
         self._conn.execute(CREATE_KEYSTROKES)
+        self._conn.execute(CREATE_GUTENBERG_CACHE)
         self._conn.commit()
 
     def insert_session(self, rec: SessionRecord) -> int:
@@ -108,6 +130,35 @@ class Storage:
             "FROM sessions"
         ).fetchone()
         return dict(row) if row else {"best_wpm": 0, "avg_accuracy": 0, "total": 0}
+
+    def cache_excerpt(
+        self, gutenberg_id: int, title: str, author: str, language: str,
+        excerpt: str, fetched_at: str,
+    ) -> int:
+        cur = self._conn.execute(
+            "INSERT INTO gutenberg_cache (gutenberg_id, title, author, language, excerpt, fetched_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (gutenberg_id, title, author, language, excerpt, fetched_at),
+        )
+        self._conn.commit()
+        return cur.lastrowid
+
+    def fetch_cached_excerpts(self, language: str, limit: int = 20) -> list[dict[str, Any]]:
+        rows = self._conn.execute(
+            "SELECT * FROM gutenberg_cache WHERE language=? ORDER BY fetched_at DESC LIMIT ?",
+            (language, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+
+    def prune_old_excerpts(self, language: str, keep: int = 20) -> None:
+        self._conn.execute(
+            "DELETE FROM gutenberg_cache WHERE language=? AND id NOT IN ("
+            "  SELECT id FROM gutenberg_cache WHERE language=? "
+            "  ORDER BY fetched_at DESC LIMIT ?"
+            ")",
+            (language, language, keep),
+        )
+        self._conn.commit()
 
     def close(self) -> None:
         self._conn.close()
