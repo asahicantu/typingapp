@@ -3,13 +3,18 @@ import json
 import random
 import re
 from dataclasses import dataclass
-from urllib.request import urlopen
+from urllib.request import Request, urlopen
 from urllib.error import URLError
 
 GUTENDEX_URL = "https://gutendex.com/books"
 TIMEOUT_SECONDS = 3
+USER_AGENT = "Mozilla/5.0 (compatible; typingapp/1.0; +https://github.com/)"
 START_MARKER_RE = re.compile(r"\*\*\*\s*START OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.IGNORECASE)
 END_MARKER_RE = re.compile(r"\*\*\*\s*END OF (?:THE|THIS) PROJECT GUTENBERG EBOOK.*?\*\*\*", re.IGNORECASE)
+
+
+def _get(url: str, timeout: float):
+    return urlopen(Request(url, headers={"User-Agent": USER_AGENT}), timeout=timeout)
 
 
 @dataclass(frozen=True)
@@ -23,7 +28,7 @@ class BookMeta:
 def search_books(language: str, limit: int = 20) -> list[BookMeta]:
     url = f"{GUTENDEX_URL}?languages={language}&mime_type=text/plain"
     try:
-        with urlopen(url, timeout=TIMEOUT_SECONDS) as response:
+        with _get(url, timeout=TIMEOUT_SECONDS) as response:
             payload = json.loads(response.read().decode("utf-8"))
     except (URLError, TimeoutError, ValueError, OSError):
         return []
@@ -52,7 +57,7 @@ def _find_plain_text_url(formats: dict) -> str | None:
 
 def fetch_excerpt(book: BookMeta, min_words: int, max_words: int) -> str | None:
     try:
-        with urlopen(book.text_url, timeout=TIMEOUT_SECONDS) as response:
+        with _get(book.text_url, timeout=TIMEOUT_SECONDS) as response:
             raw = response.read().decode("utf-8", errors="ignore")
     except (URLError, TimeoutError, OSError):
         return None

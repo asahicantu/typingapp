@@ -26,6 +26,7 @@ class LessonEngine:
     def __init__(self) -> None:
         self._words_cache: dict[str, list[str]] = {}
         self._sentences_cache: dict[str, list[str]] = {}
+        self.last_fallback_reason: str | None = None
 
     def _words(self, language: str) -> list[str]:
         if language not in self._words_cache:
@@ -49,6 +50,7 @@ class LessonEngine:
         session_duration: int = 60,
         word_count_override: int = 0,
     ) -> str:
+        self.last_fallback_reason = None
         if content_type == "custom":
             return custom_text
         if content_type == "sentences":
@@ -114,6 +116,8 @@ class LessonEngine:
         if storage is not None:
             cached = storage.fetch_cached_excerpts(language=language, limit=20)
             if cached:
+                self.last_fallback_reason = "Couldn't reach Project Gutenberg — showing a previously cached excerpt"
                 return random.choice(cached)["excerpt"]
 
+        self.last_fallback_reason = "Couldn't reach Project Gutenberg — showing locally generated text instead"
         return self._build_random_sentences(language, recent_wpm, session_duration, storage)

@@ -75,6 +75,9 @@ class LessonScreen(Screen):
         self._scorer.start()
         self._render_text()
         self._timer = self.set_interval(0.25, self._tick)
+        reason = app.lesson_engine.last_fallback_reason
+        if reason:
+            self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
 
     def _tick(self) -> None:
         if self._paused or self._scorer is None:
@@ -111,6 +114,9 @@ class LessonScreen(Screen):
                 )
             except Exception:
                 more_text = ""
+            reason = app.lesson_engine.last_fallback_reason
+            if reason:
+                self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
             if more_text:
                 s.extend(" " + more_text)
 

@@ -82,6 +82,24 @@ def test_literature_content_type_falls_back_when_no_storage_or_network(monkeypat
     assert len(lesson.strip()) > 0
 
 
+def test_literature_fallback_sets_last_fallback_reason(monkeypatch):
+    import typingapp.engine.lesson as lesson_module
+    monkeypatch.setattr(lesson_module, "search_books", lambda *a, **k: [])
+    engine = LessonEngine()
+    engine.get_lesson(content_type="literature", difficulty=3, language="en", storage=None)
+    assert engine.last_fallback_reason is not None
+    assert "Gutenberg" in engine.last_fallback_reason
+
+
+def test_last_fallback_reason_cleared_on_successful_call(monkeypatch):
+    import typingapp.engine.lesson as lesson_module
+    engine = LessonEngine()
+    engine.last_fallback_reason = "stale reason from a previous call"
+    monkeypatch.setattr(lesson_module, "search_books", lambda *a, **k: [])
+    engine.get_lesson(content_type="words", difficulty=1)
+    assert engine.last_fallback_reason is None
+
+
 def test_word_count_override_controls_word_count_regardless_of_difficulty():
     eng = LessonEngine()
     text = eng.get_lesson("words", difficulty=1, word_count_override=45)
