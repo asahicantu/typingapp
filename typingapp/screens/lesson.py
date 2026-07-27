@@ -15,6 +15,7 @@ from typingapp.engine.book_text import page_info, strip_heading_markup
 from typingapp.engine.keyboard_sanitize import sanitize_for_keyboard
 from typingapp.engine.charts import horizontal_bar
 from typingapp.data.storage import SessionRecord
+from typingapp.config import save_config
 
 BOOK_PROGRESS_PERSIST_TICKS = 80  # ~20s at the 0.25s tick interval
 BOOK_LEAD_IN_WORDS = 3
@@ -29,6 +30,8 @@ class LessonScreen(Screen):
         ("ctrl+q", "quit_lesson", "Quit"),
         ("ctrl+e", "go_menu", "Main Menu"),
         ("ctrl+f", "finish_session", "Finish Session"),
+        ("ctrl+s", "toggle_strict_mode", "Toggle Strict Mode"),
+        ("ctrl+k", "toggle_key_sounds", "Toggle Key Sounds"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -457,6 +460,22 @@ class LessonScreen(Screen):
         # already finish themselves when the fixed amount of text is fully typed.
         if self._book_id and self._scorer is not None:
             self._finish()
+
+    def action_toggle_strict_mode(self) -> None:
+        app = self.app          # type: ignore[attr-defined]
+        app.config.strict_mode = not app.config.strict_mode
+        save_config(app.config)
+        state = "ON" if app.config.strict_mode else "OFF"
+        self.query_one("#hint-bar", Label).update(f"Strict mode: {state}")
+        if self._scorer is not None:
+            self._scorer.strict_mode = app.config.strict_mode
+
+    def action_toggle_key_sounds(self) -> None:
+        app = self.app          # type: ignore[attr-defined]
+        app.config.key_sounds = not app.config.key_sounds
+        save_config(app.config)
+        state = "ON" if app.config.key_sounds else "OFF"
+        self.query_one("#hint-bar", Label).update(f"Key sounds: {state}")
 
     def action_go_menu(self) -> None:
         if self._timer:
