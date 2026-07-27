@@ -23,6 +23,22 @@ def normalize_mistake_word(word: str) -> str:
     return _STRIP_NON_ALNUM_RE.sub("", word).lower()
 
 
+def current_word_at(text: str, position: int) -> str:
+    """Return the word (original case/punctuation, unlike normalize_mistake_word)
+    containing text[position], or "" if position is out of bounds or lands on
+    whitespace. Used for display purposes (e.g. the finger-hint coaching bar),
+    not for mistake-tracking lookups."""
+    if not text or position < 0 or position >= len(text):
+        return ""
+    if text[position].isspace():
+        return ""
+    start = text.rfind(" ", 0, position) + 1
+    end = text.find(" ", position)
+    if end == -1:
+        end = len(text)
+    return text[start:end]
+
+
 @dataclass
 class Scorer:
     target: str

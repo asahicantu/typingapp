@@ -141,3 +141,47 @@ def test_extend_preserves_stats():
     s.extend(" cd")
     assert s.error_count == 1
     assert len(s.keystrokes) == 2
+
+
+def test_current_word_at_returns_the_word_containing_position():
+    from typingapp.engine.scorer import current_word_at
+    text = "the quick brown fox"
+    # position 4 is the 'q' in "quick"
+    assert current_word_at(text, 4) == "quick"
+
+
+def test_current_word_at_preserves_original_case_and_punctuation():
+    from typingapp.engine.scorer import current_word_at
+    text = "Hello, World!"
+    assert current_word_at(text, 0) == "Hello,"
+
+
+def test_current_word_at_at_start_of_text():
+    from typingapp.engine.scorer import current_word_at
+    text = "start of text"
+    assert current_word_at(text, 0) == "start"
+
+
+def test_current_word_at_at_last_word():
+    from typingapp.engine.scorer import current_word_at
+    text = "the last word"
+    assert current_word_at(text, len(text) - 1) == "word"
+
+
+def test_current_word_at_on_whitespace_returns_empty():
+    from typingapp.engine.scorer import current_word_at
+    text = "two  words"  # double space at index 3-4
+    assert current_word_at(text, 3) == ""
+
+
+def test_current_word_at_out_of_bounds_returns_empty():
+    from typingapp.engine.scorer import current_word_at
+    text = "short"
+    assert current_word_at(text, len(text)) == ""
+    assert current_word_at(text, -1) == ""
+    assert current_word_at(text, 999) == ""
+
+
+def test_current_word_at_empty_text_returns_empty():
+    from typingapp.engine.scorer import current_word_at
+    assert current_word_at("", 0) == ""
