@@ -51,3 +51,18 @@ def test_epub_folder_status_ok_when_epub_files_present(tmp_path):
     status = _epub_folder_status(str(tmp_path))
     assert status.startswith("✓")
     assert "1 EPUB file" in status
+
+
+def test_book_display_text_explains_uncached_book_clearly():
+    from typingapp.screens.settings import _book_display_text
+
+    class FakeStorage:
+        def get_book(self, book_id):
+            return None
+
+    app = _fake_app(AppConfig(selected_book_id="gutenberg:999"))
+    app.storage = FakeStorage()
+    text = _book_display_text(app)
+    assert text.startswith("⚠")
+    assert "gutenberg:999" in text
+    assert "Browse Books" in text or "My Books" in text

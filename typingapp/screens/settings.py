@@ -15,7 +15,7 @@ def _book_display_text(app) -> str:
         return "(none — random excerpts)"
     book = app.storage.get_book(cfg.selected_book_id)
     if book is None:
-        return f"{cfg.selected_book_id} (not cached yet)"
+        return f'⚠ "{cfg.selected_book_id}" isn\'t cached — pick a book via Find a New Book or My Books'
     offset = app.storage.fetch_book_progress(cfg.selected_book_id)
     page, total_pages, pct = page_info(book["total_chars"], offset)
     return f"{book['title']} — {book['author']}  ({pct:.0f}% · page {page}/{total_pages})"
