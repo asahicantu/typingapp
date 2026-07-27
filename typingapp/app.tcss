@@ -15,6 +15,7 @@ Screen {
 .acc-value { color: #90be6d; }
 .time-value { color: #43b0f1; }
 .err-value { color: #c77dff; }
+.finger-hint-value { color: #43b0f1; text-style: italic; }
 
 .hint-bar {
     background: #1a1a2e;

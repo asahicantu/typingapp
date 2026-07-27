@@ -8,7 +8,8 @@ from textual.widgets import Static, Label, ProgressBar
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.timer import Timer
 
-from typingapp.engine.scorer import Scorer, normalize_mistake_word
+from typingapp.engine.scorer import Scorer, normalize_mistake_word, current_word_at
+from typingapp.engine.keyboard_map import finger_for_char
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
 from typingapp.engine.book_text import page_info, strip_heading_markup
@@ -84,6 +85,7 @@ class LessonScreen(Screen):
                 yield Label("0:00", id="time-val", classes="stat-value time-value")
                 yield Label("  ✗ ERR: ", classes="stat-label")
                 yield Label("0", id="err-val", classes="stat-value err-value")
+            yield Label("", id="finger-hint-val", classes="stat-label finger-hint-value")
             yield ProgressBar(total=100, show_eta=False, id="progress-bar")
             yield Label("", id="book-progress-val", classes="stat-label")
             with VerticalScroll(id="text-scroll"):
@@ -115,6 +117,7 @@ class LessonScreen(Screen):
             self.query_one("#text-display", Static).update("🎉 You've finished this book!")
             self.query_one("#hint-bar", Label).update("")
             self._update_book_progress_label()
+            self._update_finger_hint_label()
             return
 
         if self._book_id:
@@ -127,6 +130,7 @@ class LessonScreen(Screen):
         self._scorer = Scorer(text, strict_mode=app.config.strict_mode)
         self._scorer.start()
         self._render_text()
+        self._update_finger_hint_label()
         self._timer = self.set_interval(0.25, self._tick)
         self._update_book_progress_label()
         self.query_one("#footer-hint", Static).update(self._footer_hint_text())
@@ -158,6 +162,21 @@ class LessonScreen(Screen):
         bar = horizontal_bar("Progress", pct, 100, width=24, value_fmt=lambda v: f"page {page}/{total_pages}")
         label.update(bar)
 
+    def _update_finger_hint_label(self) -> None:
+        label = self.query_one("#finger-hint-val", Label)
+        s = self._scorer
+        if s is None or s.is_complete:
+            label.update("")
+            return
+        word = current_word_at(s.target, s.position)
+        next_char = s.target[s.position]
+        finger = finger_for_char(next_char)
+        if not word or finger is None:
+            label.update("")
+            return
+        hand, digit = finger
+        label.update(f"Next word: {word}  ·  next key {next_char!r} → {hand} {digit}")
+
     def _persist_book_progress(self) -> None:
         if not self._book_id or self._scorer is None:
             return
@@ -177,6 +196,7 @@ class LessonScreen(Screen):
         self.query_one("#acc-val", Label).update(f"{s.accuracy:.1f}%")
         self.query_one("#time-val", Label).update(f"{mins}:{secs:02d}")
         self.query_one("#err-val", Label).update(str(s.error_count))
+        self._update_finger_hint_label()
         pct = int((s.position / max(len(s.target), 1)) * 100)
         self.query_one("#progress-bar", ProgressBar).update(progress=pct)
         self._maybe_extend_text()
@@ -386,6 +406,7 @@ class LessonScreen(Screen):
             return
         correct = self._scorer.process_key(key)
         self._render_text()
+        self._update_finger_hint_label()
         app = self.app          # type: ignore[attr-defined]
         if app.config.key_sounds:
             if correct:
