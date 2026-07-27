@@ -129,11 +129,7 @@ class LessonScreen(Screen):
         self._render_text()
         self._timer = self.set_interval(0.25, self._tick)
         self._update_book_progress_label()
-        footer = self.query_one("#footer-hint", Static)
-        if self._book_id:
-            footer.update("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  Ctrl+Q quit  ·  Ctrl+E menu")
-        else:
-            footer.update("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu")
+        self.query_one("#footer-hint", Static).update(self._footer_hint_text())
         reason = app.lesson_engine.last_fallback_reason
         if reason:
             self.query_one("#hint-bar", Label).update(f"⚠ {reason}")
@@ -145,6 +141,12 @@ class LessonScreen(Screen):
             2 for kind, start, _end in self._book_chunk_spans if kind == "heading" and start <= stripped_pos
         )
         return self._book_chunk_start_offset + stripped_pos + marker_chars
+
+    def _footer_hint_text(self) -> str:
+        base = "ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
+        if self._book_id:
+            return "ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
+        return base
 
     def _update_book_progress_label(self) -> None:
         label = self.query_one("#book-progress-val", Label)
