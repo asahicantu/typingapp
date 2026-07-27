@@ -1,8 +1,26 @@
 from __future__ import annotations
+import re
 import time
 from dataclasses import dataclass, field
 
 from typingapp.data.storage import KeystrokeRecord
+
+_STRIP_NON_ALNUM_RE = re.compile(r"^\W+|\W+$")
+
+
+def normalize_mistake_word(word: str) -> str:
+    """Normalize a word for use as a mistake-tracking lookup key.
+
+    Strips leading/trailing non-word characters (punctuation such as commas,
+    periods, quotes, em-dashes, etc.) and lowercases the result. This is the
+    ONE shared normalization used everywhere a word is written to or read
+    from the mistake-tracking system (Scorer.word_errors, Storage's
+    word_mistakes table, and the LessonScreen highlight-lookup code), so a
+    word like "dog," typed with an error and a word rendered as "Dog" in a
+    later lesson are recognized as the same key. It intentionally does NOT
+    change what is rendered/highlighted on screen -- only the lookup key.
+    """
+    return _STRIP_NON_ALNUM_RE.sub("", word).lower()
 
 
 @dataclass
@@ -72,7 +90,7 @@ class Scorer:
         end = self.target.find(" ", index)
         if end == -1:
             end = len(self.target)
-        return self.target[start:end]
+        return normalize_mistake_word(self.target[start:end])
 
     def top_mistaken_words(self, limit: int = 5) -> list[tuple[str, int]]:
         return sorted(self.word_errors.items(), key=lambda kv: kv[1], reverse=True)[:limit]

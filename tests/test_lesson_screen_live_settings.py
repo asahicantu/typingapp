@@ -5,7 +5,7 @@ from textual.widgets import Label
 
 APP_TCSS_PATH = str(Path(__file__).resolve().parent.parent / "typingapp" / "app.tcss")
 
-from typingapp.config import AppConfig, load_config
+from typingapp.config import AppConfig
 from typingapp.data.storage import Storage
 from typingapp.engine.lesson import LessonEngine
 from typingapp.engine.adaptive import AdaptiveEngine
@@ -33,7 +33,6 @@ def _make_app(storage, config):
 
 def test_ctrl_s_toggles_strict_mode_and_persists(tmp_path):
     storage = Storage(tmp_path / "test.db")
-    config_path = tmp_path / "config.json"
     cfg = AppConfig(content_type="custom", strict_mode=False, key_sounds=False)
     app = _make_app(storage, cfg)
 
@@ -85,27 +84,25 @@ def test_ctrl_k_toggles_key_sounds_and_persists(tmp_path):
 
 
 def test_toggling_strict_mode_writes_to_disk(tmp_path):
-    from typingapp.config import DEFAULT_CONFIG_PATH
-    import typingapp.config as config_module
-
     storage = Storage(tmp_path / "test.db")
-    config_path = tmp_path / "config.json"
     cfg = AppConfig(content_type="custom", strict_mode=False, key_sounds=False)
     app = _make_app(storage, cfg)
 
-    async def run(monkeypatch_path):
+    async def run():
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+s")
             await pilot.pause()
 
-    # save_config is called with the default path inside LessonScreen; to verify
-    # persistence without monkeypatching the module-level default, just re-load
-    # the in-memory app.config object directly (already covered by the first test).
-    # This test instead verifies save_config was actually invoked by checking a
-    # patched call.
+    # This test verifies save_config is actually invoked (persistence), as
+    # opposed to test_ctrl_s_toggles_strict_mode_and_persists above, which
+    # only checks the in-memory app.config state. The autouse conftest.py
+    # fixture (isolate_default_config_path) already redirects every
+    # save_config default-path write in the whole test suite to a per-test
+    # tmp_path, so it's safe to let save_config run for real here rather
+    # than mocking it out.
     from unittest.mock import patch
     with patch("typingapp.screens.lesson.save_config") as mock_save:
-        asyncio.run(run(config_path))
+        asyncio.run(run())
         assert mock_save.called
     storage.close()

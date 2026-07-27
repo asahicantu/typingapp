@@ -8,7 +8,7 @@ from textual.widgets import Static, Label, ProgressBar
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.timer import Timer
 
-from typingapp.engine.scorer import Scorer
+from typingapp.engine.scorer import Scorer, normalize_mistake_word
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
 from typingapp.engine.book_text import page_info, strip_heading_markup
@@ -280,7 +280,7 @@ class LessonScreen(Screen):
             word = match.group()
             if cursor < match.start():
                 parts.append(f"[dim]{text[cursor:match.start()]}[/]")
-            if word in self._missed_words:
+            if normalize_mistake_word(word) in self._missed_words:
                 parts.append(f"[dim][#ffb347]{word}[/][/]")
             else:
                 parts.append(f"[dim]{word}[/]")
@@ -354,7 +354,7 @@ class LessonScreen(Screen):
             word = match.group()
             if cursor < match.start():
                 parts.append(f"[dim]{escape(segment[cursor:match.start()])}[/]")
-            if word in self._missed_words:
+            if normalize_mistake_word(word) in self._missed_words:
                 parts.append(f"[dim][#ffb347]{escape(word)}[/][/]")
             else:
                 parts.append(f"[dim]{escape(word)}[/]")
