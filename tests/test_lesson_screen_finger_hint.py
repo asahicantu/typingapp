@@ -118,6 +118,29 @@ def test_finger_hint_is_empty_when_lesson_is_complete(tmp_path):
     storage.close()
 
 
+def test_finger_hint_shows_space_label_for_space_key(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    cfg = AppConfig(content_type="custom", key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("t")
+            await pilot.press("h")
+            await pilot.press("e")
+            await pilot.pause()
+            # next key after "the" is the space character -> shown as "SPACE", Left thumb
+            hint = app.screen.query_one("#finger-hint-val", Label)
+            text = str(hint.content)
+            assert "SPACE" in text
+            assert "Left" in text
+            assert "thumb" in text
+
+    asyncio.run(run())
+    storage.close()
+
+
 def test_finger_hint_shown_in_book_mode_too(tmp_path):
     storage = Storage(tmp_path / "test.db")
     storage.upsert_book(book_id="gutenberg:1", source="gutenberg", title="T", author="A",

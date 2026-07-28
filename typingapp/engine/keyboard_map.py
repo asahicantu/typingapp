@@ -30,6 +30,8 @@ _KEY_TO_FINGER: dict[str, tuple[str, str]] = {
     ",": ("Right", "middle"), ".": ("Right", "ring"), "/": ("Right", "pinky"),
     # space
     " ": ("Left", "thumb"),
+    # enter/return
+    "\n": ("Right", "pinky"),
 }
 
 

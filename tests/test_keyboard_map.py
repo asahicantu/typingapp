@@ -56,8 +56,11 @@ def test_uppercase_letters_map_to_same_finger_as_lowercase():
 
 def test_unmapped_character_returns_none():
     assert finger_for_char("€") is None
-    assert finger_for_char("\n") is None
 
 
-def test_newline_and_tab_return_none_not_crash():
+def test_newline_maps_to_right_pinky():
+    assert finger_for_char("\n") == ("Right", "pinky")
+
+
+def test_tab_returns_none_not_crash():
     assert finger_for_char("\t") is None

@@ -8,7 +8,7 @@ from textual.widgets import Static, Label, ProgressBar
 from textual.containers import Vertical, Horizontal, VerticalScroll
 from textual.timer import Timer
 
-from typingapp.engine.scorer import Scorer, normalize_mistake_word, current_word_at
+from typingapp.engine.scorer import Scorer, normalize_mistake_word, current_word_at, current_char_at
 from typingapp.engine.keyboard_map import finger_for_char
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
@@ -169,13 +169,20 @@ class LessonScreen(Screen):
             label.update("")
             return
         word = current_word_at(s.target, s.position)
-        next_char = s.target[s.position]
-        finger = finger_for_char(next_char)
+        if not word:
+            # cursor is on whitespace (e.g. the next key to press is space/enter) --
+            # show the upcoming word instead of blanking the hint.
+            lookahead = s.position
+            while lookahead < len(s.target) and s.target[lookahead].isspace():
+                lookahead += 1
+            word = current_word_at(s.target, lookahead)
+        next_char_label = current_char_at(s.target, s.position)
+        finger = finger_for_char(s.target[s.position])
         if not word or finger is None:
             label.update("")
             return
         hand, digit = finger
-        label.update(f"Next word: {word}  ·  next key {next_char!r} → {hand} {digit}")
+        label.update(f"Next word: {word}  ·  next key {next_char_label!r} → {hand} {digit}")
 
     def _persist_book_progress(self) -> None:
         if not self._book_id or self._scorer is None:

@@ -38,6 +38,19 @@ def current_word_at(text: str, position: int) -> str:
         end = len(text)
     return text[start:end]
 
+def current_char_at(text: str, position: int) -> str:
+    """Return a display label for text[position]: "ENTER" for a newline, "SPACE"
+    for any other whitespace, the character itself otherwise, or "" if position
+    is out of bounds. Used for display purposes (e.g. the finger-hint coaching
+    bar), not for mistake-tracking lookups."""
+    if not text or position < 0 or position >= len(text):
+        return ""
+    if text[position] == "\n":
+        return "ENTER"
+    if text[position].isspace():
+        return "SPACE"
+    return text[position]
+
 
 @dataclass
 class Scorer:
