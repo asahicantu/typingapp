@@ -205,3 +205,54 @@ def test_page_nav_is_a_no_op_outside_book_mode(tmp_path):
 
     asyncio.run(run())
     storage.close()
+
+
+def test_accuracy_after_page_skip_reflects_only_typed_text(tmp_path):
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+
+            # Type into the CURRENT (pre-jump) chunk first, including a deliberate
+            # wrong keystroke, so there is real keystroke/error state in play before
+            # the jump -- a buggy implementation that reused/leaked Scorer state
+            # across the jump would show up here, unlike a scenario that jumps
+            # before typing anything at all.
+            pre_jump_target = screen._scorer.target
+            # deliberate mistake: press a char that doesn't match position 0 ("w" of
+            # "word0..."). strict_mode is off by default, so position still advances
+            # to 1 even though this keystroke was wrong.
+            wrong_char = "z" if pre_jump_target[0] != "z" else "y"
+            await pilot.press(wrong_char)
+            # follow up with whatever IS correct for the new position (1), to keep
+            # typing normally in the chunk we're about to abandon.
+            second_char = pre_jump_target[1]
+            await pilot.press(second_char if second_char != " " else "space")
+            await pilot.pause()
+            assert screen._scorer.error_count == 1
+            assert len(screen._scorer.keystrokes) == 2
+
+            # Now skip a page -- this pre-jump chunk (with its real mistake) must
+            # never leak into the next chunk's Scorer.
+            screen.action_next_page()
+            await pilot.pause()
+
+            target = screen._scorer.target
+            # type the first few characters correctly in the NEW chunk
+            for ch in target[:5]:
+                await pilot.press(ch if ch != " " else "space")
+            await pilot.pause()
+
+            # The post-jump Scorer must start completely fresh: only the 5
+            # correctly-typed keystrokes above show up, and the wrong keystroke
+            # typed into the skipped chunk is nowhere to be found.
+            assert screen._scorer.error_count == 0
+            assert screen._scorer.accuracy == 100.0
+            assert len(screen._scorer.keystrokes) == 5
+
+    asyncio.run(run())
+    storage.close()
