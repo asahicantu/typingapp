@@ -12,7 +12,7 @@ from typingapp.engine.scorer import Scorer, normalize_mistake_word, current_word
 from typingapp.engine.keyboard_map import finger_for_char
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
-from typingapp.engine.book_text import page_info, strip_heading_markup
+from typingapp.engine.book_text import page_info, strip_heading_markup, CHARS_PER_PAGE
 from typingapp.engine.keyboard_sanitize import sanitize_for_keyboard
 from typingapp.engine.charts import horizontal_bar
 from typingapp.data.storage import SessionRecord
@@ -33,6 +33,9 @@ class LessonScreen(Screen):
         ("ctrl+f", "finish_session", "Finish Session"),
         ("ctrl+s", "toggle_strict_mode", "Toggle Strict Mode"),
         ("ctrl+k", "toggle_key_sounds", "Toggle Key Sounds"),
+        ("ctrl+right", "next_page", "Next Page"),
+        ("ctrl+left", "previous_page", "Previous Page"),
+        ("ctrl+home", "book_home", "Book Start"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -149,7 +152,9 @@ class LessonScreen(Screen):
     def _footer_hint_text(self) -> str:
         base = "ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
         if self._book_id:
-            return "ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
+            return ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  "
+                    "Ctrl+←/→ page  ·  Ctrl+Home start  ·  "
+                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         return base
 
     def _update_book_progress_label(self) -> None:
@@ -490,6 +495,58 @@ class LessonScreen(Screen):
         # already finish themselves when the fixed amount of text is fully typed.
         if self._book_id and self._scorer is not None:
             self._finish()
+
+    def _jump_to_book_offset(self, new_offset: int) -> None:
+        app = self.app          # type: ignore[attr-defined]
+        book = app.storage.get_book(self._book_id)
+        total_chars = book["total_chars"] if book else 0
+        clamped_offset = max(0, min(new_offset, total_chars))
+        app.storage.update_book_progress(
+            self._book_id, clamped_offset, datetime.datetime.now().isoformat()
+        )
+        if self._timer:
+            self._timer.stop()
+        self._book_tick_counter = 0
+        self._start_lesson()
+
+    def _current_book_offset(self) -> int:
+        # The authoritative "how far this book has progressed" is whichever is further
+        # along: the last value persisted to storage, or the live cursor position.
+        #
+        # Storage can be AHEAD of the cursor: _maybe_extend_text persists the *chunk-end*
+        # offset (_book_raw_offset(len(s.target))) every time it tops up text near the end
+        # of a chunk — which happens routinely during normal reading — while the cursor
+        # (s.position) hasn't caught up to that chunk end yet. Using the cursor alone here
+        # would compute a stale, regressed offset (the original bug).
+        #
+        # But storage can also be BEHIND the cursor: right after a lesson starts, or before
+        # the periodic 80-tick persist / next extension fires, the user may have typed
+        # forward without any write having happened yet — storage still holds the offset
+        # the chunk was seeded from. Using storage alone in that window would also regress.
+        #
+        # Taking the max of both is safe in all cases since neither is unconditionally
+        # authoritative.
+        app = self.app      # type: ignore[attr-defined]
+        stored_offset = app.storage.fetch_book_progress(self._book_id) if self._book_id else 0
+        cursor_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        return max(stored_offset, cursor_offset)
+
+    def action_next_page(self) -> None:
+        if not self._book_id:
+            return
+        current_offset = self._current_book_offset()
+        self._jump_to_book_offset(current_offset + CHARS_PER_PAGE)
+
+    def action_previous_page(self) -> None:
+        if not self._book_id:
+            return
+        current_offset = self._current_book_offset()
+        self._jump_to_book_offset(current_offset - CHARS_PER_PAGE)
+
+    def action_book_home(self) -> None:
+        if not self._book_id:
+            return
+        self._jump_to_book_offset(0)
 
     def action_toggle_strict_mode(self) -> None:
         app = self.app          # type: ignore[attr-defined]
