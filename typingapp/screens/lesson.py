@@ -11,7 +11,7 @@ from textual.timer import Timer
 from typingapp.engine.scorer import Scorer, normalize_mistake_word
 from typingapp.engine.adaptive import AdaptiveEngine
 from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
-from typingapp.engine.book_text import page_info, strip_heading_markup
+from typingapp.engine.book_text import page_info, strip_heading_markup, CHARS_PER_PAGE
 from typingapp.engine.keyboard_sanitize import sanitize_for_keyboard
 from typingapp.engine.charts import horizontal_bar
 from typingapp.data.storage import SessionRecord
@@ -32,6 +32,9 @@ class LessonScreen(Screen):
         ("ctrl+f", "finish_session", "Finish Session"),
         ("ctrl+s", "toggle_strict_mode", "Toggle Strict Mode"),
         ("ctrl+k", "toggle_key_sounds", "Toggle Key Sounds"),
+        ("ctrl+right", "next_page", "Next Page"),
+        ("ctrl+left", "previous_page", "Previous Page"),
+        ("ctrl+home", "book_home", "Book Start"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -145,7 +148,9 @@ class LessonScreen(Screen):
     def _footer_hint_text(self) -> str:
         base = "ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
         if self._book_id:
-            return "ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
+            return ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  "
+                    "Ctrl+←/→ page  ·  Ctrl+Home start  ·  "
+                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         return base
 
     def _update_book_progress_label(self) -> None:
@@ -462,6 +467,36 @@ class LessonScreen(Screen):
         # already finish themselves when the fixed amount of text is fully typed.
         if self._book_id and self._scorer is not None:
             self._finish()
+
+    def _jump_to_book_offset(self, new_offset: int) -> None:
+        app = self.app          # type: ignore[attr-defined]
+        book = app.storage.get_book(self._book_id)
+        total_chars = book["total_chars"] if book else 0
+        clamped_offset = max(0, min(new_offset, total_chars))
+        app.storage.update_book_progress(
+            self._book_id, clamped_offset, datetime.datetime.now().isoformat()
+        )
+        if self._timer:
+            self._timer.stop()
+        self._book_tick_counter = 0
+        self._start_lesson()
+
+    def action_next_page(self) -> None:
+        if not self._book_id:
+            return
+        current_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        self._jump_to_book_offset(current_offset + CHARS_PER_PAGE)
+
+    def action_previous_page(self) -> None:
+        if not self._book_id:
+            return
+        current_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        self._jump_to_book_offset(current_offset - CHARS_PER_PAGE)
+
+    def action_book_home(self) -> None:
+        if not self._book_id:
+            return
+        self._jump_to_book_offset(0)
 
     def action_toggle_strict_mode(self) -> None:
         app = self.app          # type: ignore[attr-defined]
