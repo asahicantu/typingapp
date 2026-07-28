@@ -36,8 +36,13 @@ def _make_app(storage, config):
 
 def _make_storage_with_book(tmp_path, total_words=2000):
     storage = Storage(tmp_path / "test.db")
-    # plenty of words so total_chars comfortably exceeds several pages
-    full_text = " ".join(f"word{i}" for i in range(total_words))
+    # plenty of words so total_chars comfortably exceeds several pages. Sentence-ending
+    # punctuation every few words matters here: chunk_from_offset's oversized-block
+    # fallback (_cut_oversized_block) can only cut a chunk short at a sentence boundary,
+    # so a corpus with none of that would return the ENTIRE book as a single chunk
+    # (no room to observe a real chunk boundary or trigger _maybe_extend_text within it).
+    words = [f"word{i}." if i % 8 == 7 else f"word{i}" for i in range(total_words)]
+    full_text = " ".join(words)
     storage.upsert_book(
         book_id=BOOK_ID, source="gutenberg", title="T", author="A",
         language="en", full_text=full_text, cached_at="2026-07-28T10:00:00",
@@ -202,6 +207,65 @@ def test_page_nav_is_a_no_op_outside_book_mode(tmp_path):
             # unchanged -- these actions must no-op when there's no book_id
             assert screen._scorer.target == target_before
             assert screen._scorer.position == pos_before
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_next_page_after_extension_advances_forward_not_backward(tmp_path):
+    # Regression test for the bug where action_next_page computed its base offset from
+    # the scorer's cursor position (_book_raw_offset(scorer.position)) instead of the
+    # persisted offset. _maybe_extend_text persists a DIFFERENT, further-along offset
+    # (_book_raw_offset(len(scorer.target)), i.e. chunk-end) every time it tops up text
+    # near the end of a chunk -- which happens routinely during normal reading, not as a
+    # rare edge case. Once that has fired, the cursor-based offset is behind what's
+    # already been persisted, so a naive "current_offset + CHARS_PER_PAGE" computation
+    # from the cursor lands BEHIND the already-persisted offset -- i.e. pressing "next
+    # page" moves progress backward. This test drives a real extension (by moving the
+    # cursor near the chunk boundary and calling _maybe_extend_text directly, per the
+    # task's suggested approach) and asserts the jump is strictly forward relative to the
+    # already-persisted (post-extension) offset, not the stale cursor-based one.
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            s = screen._scorer
+            assert s is not None
+            chunk_len = len(s.target)
+
+            # Move the cursor to just inside the "near end of chunk" trigger zone
+            # (chars_remaining <= max(20, len(target) * 0.15)) without actually typing
+            # every character -- position is a plain public attribute on Scorer.
+            near_end_position = chunk_len - max(20, int(chunk_len * 0.15)) + 1
+            s.position = near_end_position
+
+            # Drive the extension directly (this is what _tick() does every 0.25s).
+            screen._maybe_extend_text()
+            await pilot.pause()
+
+            persisted_after_extension = storage.fetch_book_progress(BOOK_ID)
+            cursor_based_offset = screen._book_raw_offset(s.position)
+
+            # Sanity-check the premise of the bug: the extension must have advanced
+            # storage strictly ahead of where the cursor-based computation would put it.
+            assert persisted_after_extension > cursor_based_offset
+            assert len(s.target) > chunk_len  # text really was extended
+
+            # Now perform the actual page jump and confirm it moves forward relative to
+            # the offset that was ALREADY persisted by the extension -- not backward.
+            # The old, buggy computation (cursor_based_offset + CHARS_PER_PAGE) would be
+            # LESS than persisted_after_extension here, i.e. a regression; this asserts
+            # the jump lands exactly CHARS_PER_PAGE forward of the pre-jump persisted
+            # value instead.
+            screen.action_next_page()
+            await pilot.pause()
+
+            new_offset = storage.fetch_book_progress(BOOK_ID)
+            assert new_offset == persisted_after_extension + CHARS_PER_PAGE
 
     asyncio.run(run())
     storage.close()

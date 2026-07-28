@@ -481,16 +481,38 @@ class LessonScreen(Screen):
         self._book_tick_counter = 0
         self._start_lesson()
 
+    def _current_book_offset(self) -> int:
+        # The authoritative "how far this book has progressed" is whichever is further
+        # along: the last value persisted to storage, or the live cursor position.
+        #
+        # Storage can be AHEAD of the cursor: _maybe_extend_text persists the *chunk-end*
+        # offset (_book_raw_offset(len(s.target))) every time it tops up text near the end
+        # of a chunk — which happens routinely during normal reading — while the cursor
+        # (s.position) hasn't caught up to that chunk end yet. Using the cursor alone here
+        # would compute a stale, regressed offset (the original bug).
+        #
+        # But storage can also be BEHIND the cursor: right after a lesson starts, or before
+        # the periodic 80-tick persist / next extension fires, the user may have typed
+        # forward without any write having happened yet — storage still holds the offset
+        # the chunk was seeded from. Using storage alone in that window would also regress.
+        #
+        # Taking the max of both is safe in all cases since neither is unconditionally
+        # authoritative.
+        app = self.app      # type: ignore[attr-defined]
+        stored_offset = app.storage.fetch_book_progress(self._book_id) if self._book_id else 0
+        cursor_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        return max(stored_offset, cursor_offset)
+
     def action_next_page(self) -> None:
         if not self._book_id:
             return
-        current_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        current_offset = self._current_book_offset()
         self._jump_to_book_offset(current_offset + CHARS_PER_PAGE)
 
     def action_previous_page(self) -> None:
         if not self._book_id:
             return
-        current_offset = self._book_raw_offset(self._scorer.position if self._scorer else 0)
+        current_offset = self._current_book_offset()
         self._jump_to_book_offset(current_offset - CHARS_PER_PAGE)
 
     def action_book_home(self) -> None:
