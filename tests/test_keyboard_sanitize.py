@@ -68,3 +68,14 @@ def test_output_length_always_equals_input_length():
 def test_unknown_layout_falls_back_to_en_us_qwerty_behavior():
     text = "“Hello”"
     assert sanitize_for_keyboard(text, layout="klingon") == sanitize_for_keyboard(text, layout="en-us-qwerty")
+
+
+def test_norwegian_special_characters_survive_sanitization():
+    # Regression for Norwegian Bokmal support: æ/ø/å (and their uppercase forms)
+    # are standard, directly-typeable letters on real Nordic keyboard layouts,
+    # not decorative accents on a Latin base letter -- unlike café/naïve/señor
+    # above, these must pass through UNCHANGED, not get replaced with an ASCII
+    # lookalike (which would silently turn Norwegian text into something else).
+    text = "Søren spiste brød på en ærlig måte, Æra Øvre Åse."
+    assert sanitize_for_keyboard(text) == text
+    assert sanitize_for_keyboard("æøåÆØÅ") == "æøåÆØÅ"

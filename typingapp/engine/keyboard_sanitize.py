@@ -39,10 +39,6 @@ _NON_DECOMPOSING_REPLACEMENTS: dict[str, str] = {
     "ß": "s",  # German sharp s (eszett)
     "œ": "o",  # Latin small ligature oe
     "Œ": "O",  # Latin capital ligature OE
-    "æ": "a",  # Latin small ligature ae
-    "Æ": "A",  # Latin capital ligature AE
-    "ø": "o",  # Latin small letter o with stroke
-    "Ø": "O",  # Latin capital letter O with stroke
     "đ": "d",  # Latin small letter d with stroke
     "Đ": "D",  # Latin capital letter D with stroke
     "ł": "l",  # Latin small letter l with stroke
@@ -52,6 +48,23 @@ _NON_DECOMPOSING_REPLACEMENTS: dict[str, str] = {
     "ð": "d",  # eth
     "Ð": "D",  # capital eth
 }
+
+# Letters that are standard, directly-typeable characters on real Nordic
+# keyboard layouts (e.g. Norwegian Bokmal treats ae/oe/aa as their own keys,
+# not decorative accents on a Latin base letter) -- these pass through
+# unchanged rather than being replaced with an ASCII lookalike, even though
+# `layout` is still nominally "en-us-qwerty" here (this app doesn't yet model
+# a distinct Nordic physical layout, but the *text* is legitimate target
+# content for a Norwegian-language lesson and must not be mangled). Without
+# this, ae/AE/oe/OE would hit _NON_DECOMPOSING_REPLACEMENTS (previously
+# mapped them to plain "a"/"o") and aa/AA would decompose via NFD to "a"/"A"
+# (dropping the combining ring above), silently turning Norwegian text into
+# something else.
+_NORDIC_PASSTHROUGH = frozenset({
+    chr(0x00E6), chr(0x00C6),  # ae / AE (Latin small/capital ligature ae)
+    chr(0x00F8), chr(0x00D8),  # oe / OE (Latin small/capital letter o with stroke)
+    chr(0x00E5), chr(0x00C5),  # aa / AA (Latin small/capital letter a with ring above)
+})
 
 _LAYOUTS = {
     "en-us-qwerty": _EN_US_QWERTY_REPLACEMENTS,
@@ -68,6 +81,8 @@ def sanitize_for_keyboard(text: str, layout: str = "en-us-qwerty") -> str:
     out_chars = []
     for ch in text:
         if ch in TYPEABLE_ASCII:
+            out_chars.append(ch)
+        elif ch in _NORDIC_PASSTHROUGH:
             out_chars.append(ch)
         elif ch in replacements:
             out_chars.append(replacements[ch])
