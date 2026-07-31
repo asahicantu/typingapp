@@ -186,6 +186,59 @@ def test_ctrl_d_is_a_no_op_when_lesson_is_complete(tmp_path):
     storage.close()
 
 
+def test_ctrl_d_survives_fetch_definition_raising_and_resets_in_progress_flag(tmp_path):
+    # engine/dictionary.py's fetch_definition claims "never raises," but its except
+    # clause doesn't cover http.client.HTTPException/IncompleteRead. If it raises
+    # inside the _lookup_definition worker thread, call_from_thread never runs and
+    # _dictionary_lookup_in_progress is stuck True forever -- and Textual's @work
+    # defaults to exit_on_error=True, crashing the app. This test proves both that
+    # a raising fetch_definition degrades to the normal "No definition found." popup
+    # (no crash) and that a SECOND, later Ctrl+D press still reaches fetch_definition
+    # (proving the in-progress flag was correctly reset, not permanently stuck).
+    storage = Storage(tmp_path / "test.db")
+    cfg = AppConfig(content_type="custom", key_sounds=False)
+
+    class TestApp(App):
+        CSS_PATH = APP_TCSS_PATH
+
+        def __init__(self):
+            super().__init__()
+            self.config = cfg
+            self.storage = storage
+            self.lesson_engine = LessonEngine()
+            self.adaptive = AdaptiveEngine(current_level=1)
+            self.sound = SoundPlayer()
+
+        def on_mount(self):
+            self.push_screen(LessonScreen(custom_text="the quick fox"))
+
+    app = TestApp()
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            with patch("typingapp.screens.lesson.fetch_definition", side_effect=RuntimeError("boom")):
+                await pilot.press("ctrl+d")
+                found = await _wait_for_popup(pilot, app)
+                assert found
+                definition = app.screen.query_one("#dictionary-definition", Static)
+                assert "No definition found." in str(definition.content)
+                await pilot.press("escape")
+                await pilot.pause()
+                assert isinstance(app.screen, LessonScreen)
+
+            with patch("typingapp.screens.lesson.fetch_definition", return_value="(noun) a fast animal") as mock_fetch:
+                await pilot.press("ctrl+d")
+                found = await _wait_for_popup(pilot, app)
+                assert found
+                mock_fetch.assert_called_once()
+                definition = app.screen.query_one("#dictionary-definition", Static)
+                assert "fast animal" in str(definition.content)
+
+    asyncio.run(run())
+    storage.close()
+
+
 def test_repeated_ctrl_d_does_not_stack_multiple_popups(tmp_path):
     storage = Storage(tmp_path / "test.db")
     cfg = AppConfig(content_type="custom", key_sounds=False)

@@ -603,7 +603,10 @@ class LessonScreen(Screen):
 
     @work(exclusive=True, thread=True, group="dictionary-lookup")
     def _lookup_definition(self, display_word: str, lookup_word: str, language: str) -> None:
-        definition = fetch_definition(lookup_word, language)
+        try:
+            definition = fetch_definition(lookup_word, language)
+        except Exception:
+            definition = None
         self.app.call_from_thread(self._show_definition_popup, display_word, definition)
 
     def _show_definition_popup(self, word: str, definition: str | None) -> None:
