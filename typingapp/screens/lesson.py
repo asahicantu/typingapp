@@ -54,6 +54,7 @@ class LessonScreen(Screen):
         self._book_tick_counter = 0
         self._book_chunk_spans: list[tuple[str, int, int]] = []
         self._missed_words: set[str] = set()
+        self._dictionary_lookup_in_progress = False
 
     def _load_lesson_text(self) -> str:
         app = self.app      # type: ignore[attr-defined]
@@ -105,6 +106,7 @@ class LessonScreen(Screen):
 
     def _start_lesson(self) -> None:
         app = self.app      # type: ignore[attr-defined]
+        self._dictionary_lookup_in_progress = False
         if app.config.highlight_past_mistakes:
             self._missed_words = app.storage.fetch_frequently_missed_words()
         else:
@@ -493,6 +495,7 @@ class LessonScreen(Screen):
         if self._timer:
             self._timer.stop()
         self._persist_book_progress()
+        self._dictionary_lookup_in_progress = False
         self.app.pop_screen()
 
     def action_finish_session(self) -> None:
@@ -574,6 +577,8 @@ class LessonScreen(Screen):
         s = self._scorer
         if s is None or s.is_complete:
             return
+        if self._dictionary_lookup_in_progress or isinstance(self.app.screen, DictionaryPopupScreen):
+            return
         app = self.app      # type: ignore[attr-defined]
         language = app.config.language
         word = current_word_at(s.target, s.position)
@@ -584,25 +589,31 @@ class LessonScreen(Screen):
             word = current_word_at(s.target, lookahead)
         if not word:
             return
+        lookup_word = normalize_mistake_word(word)
+        if not lookup_word:
+            return
         if language != "en":
             self.app.push_screen(DictionaryPopupScreen(
                 word=word, definition=None,
                 unavailable_reason="Dictionary not available for this language yet",
             ))
             return
-        self._lookup_definition(word, language)
+        self._dictionary_lookup_in_progress = True
+        self._lookup_definition(word, lookup_word, language)
 
     @work(exclusive=True, thread=True, group="dictionary-lookup")
-    def _lookup_definition(self, word: str, language: str) -> None:
-        definition = fetch_definition(word, language)
-        self.app.call_from_thread(self._show_definition_popup, word, definition)
+    def _lookup_definition(self, display_word: str, lookup_word: str, language: str) -> None:
+        definition = fetch_definition(lookup_word, language)
+        self.app.call_from_thread(self._show_definition_popup, display_word, definition)
 
     def _show_definition_popup(self, word: str, definition: str | None) -> None:
+        self._dictionary_lookup_in_progress = False
         self.app.push_screen(DictionaryPopupScreen(word, definition))
 
     def action_go_menu(self) -> None:
         if self._timer:
             self._timer.stop()
         self._persist_book_progress()
+        self._dictionary_lookup_in_progress = False
         from typingapp.screens.menu import MenuScreen
         self.app.switch_screen(MenuScreen())

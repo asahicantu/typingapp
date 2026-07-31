@@ -64,3 +64,21 @@ def test_newline_maps_to_right_pinky():
 
 def test_tab_returns_none_not_crash():
     assert finger_for_char("\t") is None
+
+
+def test_norwegian_letters_have_a_defined_finger():
+    # aa/oe/ae must not be None -- previously these fell through to None,
+    # which blanked the ENTIRE finger-hint bar (not just the finger portion)
+    # whenever the cursor sat on one of these very common Norwegian letters.
+    for ch in ("æ", "ø", "å"):
+        result = finger_for_char(ch)
+        assert result is not None
+        hand, finger = result
+        assert hand in ("Left", "Right")
+        assert finger in ("pinky", "ring", "middle", "index", "thumb")
+
+
+def test_norwegian_uppercase_letters_map_to_same_finger_as_lowercase():
+    assert finger_for_char("Æ") == finger_for_char("æ")
+    assert finger_for_char("Ø") == finger_for_char("ø")
+    assert finger_for_char("Å") == finger_for_char("å")
