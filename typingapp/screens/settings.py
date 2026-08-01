@@ -75,7 +75,7 @@ class SettingsScreen(Screen):
             with Horizontal(classes="setting-row"):
                 yield Label("Language")
                 yield Select(
-                    options=[("English", "en"), ("Espanol", "es"), ("Francais", "fr")],
+                    options=[("English", "en"), ("Espanol", "es"), ("Francais", "fr"), ("Norsk", "no")],
                     value=cfg.language,
                     id="sel-language",
                 )

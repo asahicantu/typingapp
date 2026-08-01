@@ -125,3 +125,25 @@ Screen {
 #text-display {
     height: auto;
 }
+
+DictionaryPopupScreen {
+    align: center middle;
+}
+
+#dictionary-popup-body {
+    width: 60;
+    height: auto;
+    padding: 2 4;
+    border: tall #333333;
+    background: #0d0d0d;
+}
+
+#dictionary-popup-body Button {
+    width: 100%;
+    margin: 1 0 0 0;
+}
+
+#dictionary-definition {
+    color: #ffffff;
+    margin: 1 0 0 0;
+}

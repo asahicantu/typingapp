@@ -9,7 +9,7 @@ from typingapp.engine.text_sizing import estimate_word_count
 from typingapp.engine.book_text import chunk_from_offset
 
 WORD_COUNTS = {1: 10, 2: 15, 3: 20, 4: 25, 5: 30, 6: 40, 7: 50, 8: 60, 9: 80, 10: 100}
-SUPPORTED_LANGUAGES = {"en", "es", "fr"}
+SUPPORTED_LANGUAGES = {"en", "es", "fr", "no"}
 CACHE_REFRESH_THRESHOLD = 5
 BOOK_COMPLETE_SENTINEL = "\x00__BOOK_COMPLETE__\x00"
 

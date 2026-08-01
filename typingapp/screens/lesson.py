@@ -1,6 +1,7 @@
 from __future__ import annotations
 import datetime
 import re
+from textual import work
 from textual.markup import escape
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -15,8 +16,10 @@ from typingapp.engine.lesson import BOOK_COMPLETE_SENTINEL
 from typingapp.engine.book_text import page_info, strip_heading_markup, CHARS_PER_PAGE
 from typingapp.engine.keyboard_sanitize import sanitize_for_keyboard
 from typingapp.engine.charts import horizontal_bar
+from typingapp.engine.dictionary import fetch_definition
 from typingapp.data.storage import SessionRecord
 from typingapp.config import save_config
+from typingapp.screens.dictionary_popup import DictionaryPopupScreen
 
 BOOK_PROGRESS_PERSIST_TICKS = 80  # ~20s at the 0.25s tick interval
 BOOK_LEAD_IN_WORDS = 3
@@ -36,6 +39,7 @@ class LessonScreen(Screen):
         ("ctrl+right", "next_page", "Next Page"),
         ("ctrl+left", "previous_page", "Previous Page"),
         ("ctrl+home", "book_home", "Book Start"),
+        ("ctrl+d", "show_definition", "Dictionary"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -50,6 +54,7 @@ class LessonScreen(Screen):
         self._book_tick_counter = 0
         self._book_chunk_spans: list[tuple[str, int, int]] = []
         self._missed_words: set[str] = set()
+        self._dictionary_lookup_in_progress = False
 
     def _load_lesson_text(self) -> str:
         app = self.app      # type: ignore[attr-defined]
@@ -101,6 +106,7 @@ class LessonScreen(Screen):
 
     def _start_lesson(self) -> None:
         app = self.app      # type: ignore[attr-defined]
+        self._dictionary_lookup_in_progress = False
         if app.config.highlight_past_mistakes:
             self._missed_words = app.storage.fetch_frequently_missed_words()
         else:
@@ -150,11 +156,13 @@ class LessonScreen(Screen):
         return self._book_chunk_start_offset + stripped_pos + marker_chars
 
     def _footer_hint_text(self) -> str:
-        base = "ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu"
+        base = ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  "
+                "Ctrl+D dictionary  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         if self._book_id:
             return ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  "
                     "Ctrl+←/→ page  ·  Ctrl+Home start  ·  "
-                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+Q quit  ·  Ctrl+E menu")
+                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+D dictionary  ·  "
+                    "Ctrl+Q quit  ·  Ctrl+E menu")
         return base
 
     def _update_book_progress_label(self) -> None:
@@ -487,6 +495,7 @@ class LessonScreen(Screen):
         if self._timer:
             self._timer.stop()
         self._persist_book_progress()
+        self._dictionary_lookup_in_progress = False
         self.app.pop_screen()
 
     def action_finish_session(self) -> None:
@@ -564,9 +573,50 @@ class LessonScreen(Screen):
         state = "ON" if app.config.key_sounds else "OFF"
         self.query_one("#hint-bar", Label).update(f"Key sounds: {state}")
 
+    def action_show_definition(self) -> None:
+        s = self._scorer
+        if s is None or s.is_complete:
+            return
+        if self._dictionary_lookup_in_progress or isinstance(self.app.screen, DictionaryPopupScreen):
+            return
+        app = self.app      # type: ignore[attr-defined]
+        language = app.config.language
+        word = current_word_at(s.target, s.position)
+        if not word:
+            lookahead = s.position
+            while lookahead < len(s.target) and s.target[lookahead].isspace():
+                lookahead += 1
+            word = current_word_at(s.target, lookahead)
+        if not word:
+            return
+        lookup_word = normalize_mistake_word(word)
+        if not lookup_word:
+            return
+        if language != "en":
+            self.app.push_screen(DictionaryPopupScreen(
+                word=word, definition=None,
+                unavailable_reason="Dictionary not available for this language yet",
+            ))
+            return
+        self._dictionary_lookup_in_progress = True
+        self._lookup_definition(word, lookup_word, language)
+
+    @work(exclusive=True, thread=True, group="dictionary-lookup")
+    def _lookup_definition(self, display_word: str, lookup_word: str, language: str) -> None:
+        try:
+            definition = fetch_definition(lookup_word, language)
+        except Exception:
+            definition = None
+        self.app.call_from_thread(self._show_definition_popup, display_word, definition)
+
+    def _show_definition_popup(self, word: str, definition: str | None) -> None:
+        self._dictionary_lookup_in_progress = False
+        self.app.push_screen(DictionaryPopupScreen(word, definition))
+
     def action_go_menu(self) -> None:
         if self._timer:
             self._timer.stop()
         self._persist_book_progress()
+        self._dictionary_lookup_in_progress = False
         from typingapp.screens.menu import MenuScreen
         self.app.switch_screen(MenuScreen())

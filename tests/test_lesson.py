@@ -68,6 +68,28 @@ def test_unknown_language_falls_back_to_english():
     assert len(lesson_unknown) > 0
 
 
+def test_load_words_norwegian():
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="words", difficulty=3, language="no")
+    assert len(lesson) > 0
+
+
+def test_load_sentences_norwegian():
+    engine = LessonEngine()
+    lesson = engine.get_lesson(content_type="sentences", difficulty=3, language="no")
+    assert len(lesson) > 0
+    assert lesson.endswith(".")
+
+
+def test_unknown_language_still_falls_back_to_english_after_norwegian_added():
+    # Regression: adding "no" to SUPPORTED_LANGUAGES must not affect the
+    # existing "unrecognized language -> falls back to en" behavior for any
+    # other still-unsupported language code.
+    engine = LessonEngine()
+    lesson_unknown = engine.get_lesson(content_type="words", difficulty=3, language="xx")
+    assert len(lesson_unknown) > 0
+
+
 def test_random_sentences_content_type_produces_text():
     engine = LessonEngine()
     lesson = engine.get_lesson(content_type="random_sentences", difficulty=3, language="en")

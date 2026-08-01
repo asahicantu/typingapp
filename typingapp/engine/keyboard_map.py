@@ -32,6 +32,15 @@ _KEY_TO_FINGER: dict[str, tuple[str, str]] = {
     " ": ("Left", "thumb"),
     # enter/return
     "\n": ("Right", "pinky"),
+    # Nordic (Norwegian) letters -- on a standard Norwegian keyboard these sit
+    # to the right of the US-QWERTY home/top row: ae is next to home-row L
+    # (where ' sits on US-QWERTY), oe is next to that (where ; sits), and aa
+    # is on the top row past P (where [ sits) -- all three are right-pinky
+    # reaches, consistent with the existing right-pinky entries for that same
+    # physical keyboard region (";", "'", "[", "]").
+    "æ": ("Right", "pinky"),  # ae (ae ligature)
+    "ø": ("Right", "pinky"),  # oe (o with stroke)
+    "å": ("Right", "pinky"),  # aa (a with ring above)
 }
 
 
