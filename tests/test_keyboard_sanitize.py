@@ -70,6 +70,26 @@ def test_unknown_layout_falls_back_to_en_us_qwerty_behavior():
     assert sanitize_for_keyboard(text, layout="klingon") == sanitize_for_keyboard(text, layout="en-us-qwerty")
 
 
+def test_unicode_line_and_paragraph_separators_become_newline():
+    # U+2028 LINE SEPARATOR / U+2029 PARAGRAPH SEPARATOR are real line breaks in
+    # the source text, not a same-line gap -- falling back to a space here would
+    # prompt SPACE for what should be an ENTER, stalling book-reading sessions
+    # on a key the user has no reason to press.
+    assert sanitize_for_keyboard("wait go") == "wait\ngo"
+    assert sanitize_for_keyboard("wait go") == "wait\ngo"
+
+
+def test_control_line_break_characters_become_newline():
+    # vertical tab / form feed / NEL are control-character line breaks that can
+    # slip through from raw source text; carriage return should already be
+    # normalized away upstream (book_text.normalize_gutenberg_text), but is
+    # handled defensively here too rather than degrading to a space.
+    assert sanitize_for_keyboard("wait\vgo") == "wait\ngo"
+    assert sanitize_for_keyboard("wait\fgo") == "wait\ngo"
+    assert sanitize_for_keyboard("wait\rgo") == "wait\ngo"
+    assert sanitize_for_keyboard("wait\x85go") == "wait\ngo"
+
+
 def test_norwegian_special_characters_survive_sanitization():
     # Regression for Norwegian Bokmal support: æ/ø/å (and their uppercase forms)
     # are standard, directly-typeable letters on real Nordic keyboard layouts,

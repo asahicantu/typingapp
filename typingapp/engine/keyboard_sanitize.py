@@ -71,12 +71,33 @@ _LAYOUTS = {
 }
 _DEFAULT_LAYOUT = "en-us-qwerty"
 
+# Characters that represent a line/paragraph break in the *source* text but
+# aren't the plain "\n" this app's target strings use for that purpose (see
+# book_text.py's blank-line-separated paragraph markup). Falling back to a
+# plain space for these (as the generic unicodedata.normalize fallback below
+# does for everything else) turns a line break into a same-line gap, which
+# breaks book-reading sessions: the user has no key that produces the
+# now-expected character, since nothing about it looks like it should be
+# Enter vs. Space. Mapping these to "\n" instead keeps the fallback keyable.
+_LINE_BREAK_CATEGORY = "Zl"
+_PARAGRAPH_BREAK_CATEGORY = "Zp"
+_LINE_BREAK_FALLBACKS = frozenset({
+    "\v",      # vertical tab
+    "\f",      # form feed
+    "\r",      # carriage return (should be normalized away upstream, but
+               # treat defensively as a line break rather than a gap)
+    chr(0x85),  # NEL (next line)
+})
+
 
 def sanitize_for_keyboard(text: str, layout: str = "en-us-qwerty") -> str:
     """Replace every character not typeable on `layout` with a single-character
-    ASCII equivalent, or a single space if there's no reasonable equivalent.
-    Guarantees len(output) == len(input) always, so callers that track character
-    offsets into the original text (book progress/page percent) stay correct."""
+    ASCII equivalent. Falls back to "\\n" for characters that represent a line
+    or paragraph break in the source text (so the user is prompted with Enter,
+    which they can actually press) and to a single space for anything else
+    with no reasonable equivalent. Guarantees len(output) == len(input) always,
+    so callers that track character offsets into the original text (book
+    progress/page percent) stay correct."""
     replacements = _LAYOUTS.get(layout, _LAYOUTS[_DEFAULT_LAYOUT])
     out_chars = []
     for ch in text:
@@ -88,6 +109,11 @@ def sanitize_for_keyboard(text: str, layout: str = "en-us-qwerty") -> str:
             out_chars.append(replacements[ch])
         elif ch in _NON_DECOMPOSING_REPLACEMENTS:
             out_chars.append(_NON_DECOMPOSING_REPLACEMENTS[ch])
+        elif ch in _LINE_BREAK_FALLBACKS or unicodedata.category(ch) in (
+            _LINE_BREAK_CATEGORY,
+            _PARAGRAPH_BREAK_CATEGORY,
+        ):
+            out_chars.append("\n")
         else:
             decomposed = unicodedata.normalize("NFD", ch)
             base = decomposed[0] if decomposed else ""
