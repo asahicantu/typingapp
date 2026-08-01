@@ -268,3 +268,48 @@ def test_repeated_ctrl_d_does_not_stack_multiple_popups(tmp_path):
 
     asyncio.run(run())
     storage.close()
+
+
+def test_dictionary_panel_exists_and_starts_empty(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    cfg = AppConfig(content_type="custom", key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            panel = screen.query_one("#dictionary-panel")
+            content = screen.query_one("#dictionary-panel-content", Static)
+            assert panel is not None
+            assert str(content.content) == ""
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_dictionary_panel_content_survives_start_lesson_rebuild(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    cfg = AppConfig(content_type="custom", key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            # simulate an already-populated panel (Task 3 wires the real lookup flow;
+            # here we just verify _start_lesson()'s rebuild doesn't blank persisted state)
+            screen._dictionary_word = "fox"
+            screen._dictionary_definition_markup = "(noun) a fast animal"
+            screen._render_dictionary_panel()
+            await pilot.pause()
+
+            screen._start_lesson()
+            await pilot.pause()
+
+            assert screen._dictionary_word == "fox"
+            content = screen.query_one("#dictionary-panel-content", Static)
+            assert "fast animal" in str(content.content)
+
+    asyncio.run(run())
+    storage.close()

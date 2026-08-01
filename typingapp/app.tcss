@@ -126,24 +126,19 @@ Screen {
     height: auto;
 }
 
-DictionaryPopupScreen {
-    align: center middle;
-}
-
-#dictionary-popup-body {
-    width: 60;
-    height: auto;
-    padding: 2 4;
+#dictionary-panel {
     border: tall #333333;
-    background: #0d0d0d;
+    padding: 0 2;
+    margin: 0 0 1 0;
+    height: auto;
+    max-height: 30%;
 }
 
-#dictionary-popup-body Button {
-    width: 100%;
-    margin: 1 0 0 0;
+#dictionary-panel:focus {
+    border: tall #43b0f1;
 }
 
-#dictionary-definition {
+#dictionary-panel-content {
     color: #ffffff;
-    margin: 1 0 0 0;
+    height: auto;
 }

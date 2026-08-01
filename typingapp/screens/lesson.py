@@ -57,6 +57,8 @@ class LessonScreen(Screen):
         self._book_chunk_spans: list[tuple[str, int, int]] = []
         self._missed_words: set[str] = set()
         self._dictionary_lookup_in_progress = False
+        self._dictionary_word = ""
+        self._dictionary_definition_markup = ""
 
     def _load_lesson_text(self) -> str:
         app = self.app      # type: ignore[attr-defined]
@@ -100,6 +102,8 @@ class LessonScreen(Screen):
             yield Label("", id="book-progress-val", classes="stat-label")
             with VerticalScroll(id="text-scroll"):
                 yield Static("", id="text-display")
+            with VerticalScroll(id="dictionary-panel"):
+                yield Static("", id="dictionary-panel-content")
             yield Label("", id="hint-bar", classes="hint-bar")
             yield Static("ESC pause  ·  Ctrl+R restart  ·  Ctrl+Q quit  ·  Ctrl+E menu", id="footer-hint", classes="stat-label")
 
@@ -129,6 +133,7 @@ class LessonScreen(Screen):
             self.query_one("#hint-bar", Label).update("")
             self._update_book_progress_label()
             self._update_finger_hint_label()
+            self._render_dictionary_panel()
             return
 
         if self._book_id:
@@ -144,6 +149,7 @@ class LessonScreen(Screen):
         self._update_finger_hint_label()
         self._timer = self.set_interval(0.25, self._tick)
         self._update_book_progress_label()
+        self._render_dictionary_panel()
         self.query_one("#footer-hint", Static).update(self._footer_hint_text())
         reason = app.lesson_engine.last_fallback_reason
         if reason:
@@ -198,6 +204,10 @@ class LessonScreen(Screen):
             return
         hand, digit = finger
         label.update(f"Next word: {word}  ·  next key {next_char_label!r} → {hand} {digit}")
+
+    def _render_dictionary_panel(self) -> None:
+        content = self.query_one("#dictionary-panel-content", Static)
+        content.update(self._dictionary_definition_markup)
 
     def _persist_book_progress(self) -> None:
         if not self._book_id or self._scorer is None:
