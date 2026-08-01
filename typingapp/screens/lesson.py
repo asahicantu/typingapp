@@ -19,7 +19,6 @@ from typingapp.engine.charts import horizontal_bar
 from typingapp.engine.dictionary import fetch_definition
 from typingapp.data.storage import SessionRecord
 from typingapp.config import save_config
-from typingapp.screens.dictionary_popup import DictionaryPopupScreen
 
 BOOK_PROGRESS_PERSIST_TICKS = 80  # ~20s at the 0.25s tick interval
 BOOK_LEAD_IN_WORDS = 3
@@ -42,6 +41,7 @@ class LessonScreen(Screen):
         ("ctrl+up", "jump_chunk_start", "Chunk Start"),
         ("ctrl+down", "jump_chunk_end", "Chunk End"),
         ("ctrl+d", "show_definition", "Dictionary"),
+        ("ctrl+shift+d", "clear_definition", "Clear Dictionary"),
     ]
 
     def __init__(self, custom_text: str = "") -> None:
@@ -58,6 +58,7 @@ class LessonScreen(Screen):
         self._missed_words: set[str] = set()
         self._dictionary_lookup_in_progress = False
         self._dictionary_word = ""
+        self._dictionary_word_key = ""
         self._dictionary_definition_markup = ""
 
     def _load_lesson_text(self) -> str:
@@ -165,11 +166,11 @@ class LessonScreen(Screen):
 
     def _footer_hint_text(self) -> str:
         base = ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+S strict  ·  Ctrl+K sound  ·  "
-                "Ctrl+D dictionary  ·  Ctrl+Q quit  ·  Ctrl+E menu")
+                "Ctrl+D dictionary  ·  Ctrl+Shift+D clear  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         if self._book_id:
             return ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  "
                     "Ctrl+←/→ page  ·  Ctrl+↑/↓ chunk start/end  ·  Ctrl+Home start  ·  "
-                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+D dictionary  ·  "
+                    "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+D dictionary  ·  Ctrl+Shift+D clear  ·  "
                     "Ctrl+Q quit  ·  Ctrl+E menu")
         return base
 
@@ -504,6 +505,10 @@ class LessonScreen(Screen):
         self.app.switch_screen(ResultsScreen(scorer=s, session_id=session_id, book_id=self._book_id))
 
     def action_pause(self) -> None:
+        panel = self.query_one("#dictionary-panel")
+        if panel.has_focus:
+            self.query_one("#text-scroll").focus()
+            return
         self._paused = not self._paused
         hint = self.query_one("#hint-bar", Label)
         hint.update("⏸ PAUSED — press ESC to resume" if self._paused else "")
@@ -611,10 +616,9 @@ class LessonScreen(Screen):
         s = self._scorer
         if s is None or s.is_complete:
             return
-        if self._dictionary_lookup_in_progress or isinstance(self.app.screen, DictionaryPopupScreen):
+        if self._dictionary_lookup_in_progress:
             return
         app = self.app      # type: ignore[attr-defined]
-        language = app.config.language
         word = current_word_at(s.target, s.position)
         if not word:
             lookahead = s.position
@@ -626,12 +630,21 @@ class LessonScreen(Screen):
         lookup_word = normalize_mistake_word(word)
         if not lookup_word:
             return
-        if language != "en":
-            self.app.push_screen(DictionaryPopupScreen(
-                word=word, definition=None,
-                unavailable_reason="Dictionary not available for this language yet",
-            ))
+
+        if lookup_word == self._dictionary_word_key and self._dictionary_word:
+            # same word as what's already shown -- focus the panel to scroll it
+            # instead of re-fetching.
+            self.query_one("#dictionary-panel").focus()
             return
+
+        language = app.config.language
+        if language != "en":
+            self._dictionary_word = word
+            self._dictionary_word_key = lookup_word
+            self._dictionary_definition_markup = "Dictionary not available for this language yet"
+            self._render_dictionary_panel()
+            return
+
         self._dictionary_lookup_in_progress = True
         self._lookup_definition(word, lookup_word, language)
 
@@ -641,11 +654,23 @@ class LessonScreen(Screen):
             definition = fetch_definition(lookup_word, language)
         except Exception:
             definition = None
-        self.app.call_from_thread(self._show_definition_popup, display_word, definition)
+        self.app.call_from_thread(self._show_definition_in_panel, display_word, lookup_word, definition)
 
-    def _show_definition_popup(self, word: str, definition: str | None) -> None:
+    def _show_definition_in_panel(self, word: str, lookup_word: str, definition: str | None) -> None:
         self._dictionary_lookup_in_progress = False
-        self.app.push_screen(DictionaryPopupScreen(word, definition))
+        self._dictionary_word = word
+        self._dictionary_word_key = lookup_word
+        self._dictionary_definition_markup = definition or "No definition found."
+        self._render_dictionary_panel()
+
+    def action_clear_definition(self) -> None:
+        self._dictionary_word = ""
+        self._dictionary_word_key = ""
+        self._dictionary_definition_markup = ""
+        self._render_dictionary_panel()
+        panel = self.query_one("#dictionary-panel")
+        if panel.has_focus:
+            self.query_one("#text-scroll").focus()
 
     def action_go_menu(self) -> None:
         if self._timer:
