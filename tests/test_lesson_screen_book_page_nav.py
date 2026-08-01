@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 from textual.app import App
+from textual.containers import VerticalScroll
 from textual.widgets import Label
 
 APP_TCSS_PATH = str(Path(__file__).resolve().parent.parent / "typingapp" / "app.tcss")
@@ -266,6 +267,50 @@ def test_next_page_after_extension_advances_forward_not_backward(tmp_path):
 
             new_offset = storage.fetch_book_progress(BOOK_ID)
             assert new_offset == persisted_after_extension + CHARS_PER_PAGE
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_page_jump_scrolls_back_to_top_even_when_content_height_unavailable(tmp_path):
+    # Regression test: _scroll_to_cursor's ratio-based math silently no-ops (leaving
+    # whatever scroll position the PREVIOUS chunk left behind) whenever the display
+    # widget reports a non-positive width/content_height -- which is exactly the state
+    # a freshly-rebuilt screen can be in for its first render after a page jump (see
+    # the get_content_height gotcha documented in CLAUDE.md). That silent no-op is
+    # what made "next page" look like it landed on the last word/section the user had
+    # typed instead of resetting to the top of the new page. Position 0 (always true
+    # immediately after a page jump) must scroll to the top unconditionally, without
+    # going through that ratio math at all.
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            scroll_container = screen.query_one("#text-scroll", VerticalScroll)
+
+            # spy on scroll_to so this test verifies _scroll_to_cursor's own decision
+            # (does it call scroll_to(y=0) at all?) rather than fighting Textual's
+            # internal scroll_y clamping, which this short test corpus's small content
+            # height would otherwise make indistinguishable from "never scrolled".
+            calls = []
+            scroll_container.scroll_to = lambda *a, **k: calls.append(k)
+
+            # simulate the widget not being laid out yet on this render -- the exact
+            # condition CLAUDE.md warns about: get_content_height returns 0 whenever
+            # width is falsy, which the OLD implementation of _scroll_to_cursor treated
+            # as "nothing to do" and returned without calling scroll_to at all, silently
+            # leaving whatever scroll position the previous chunk had left behind
+            # instead of resetting to the top of the new page.
+            display = screen.query_one("#text-display")
+            display.get_content_height = lambda *a, **k: 0
+
+            screen._scroll_to_cursor(0, len(screen._scorer.target))
+
+            assert calls == [{"y": 0, "animate": False}]
 
     asyncio.run(run())
     storage.close()

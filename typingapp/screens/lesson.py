@@ -404,9 +404,19 @@ class LessonScreen(Screen):
         return "".join(parts)
 
     def _scroll_to_cursor(self, position: int, target_length: int) -> None:
+        scroll_container = self.query_one("#text-scroll", VerticalScroll)
+        if position == 0:
+            # A fresh chunk (page jump, book-home, or a brand-new lesson) always starts
+            # at the top -- go there directly rather than through the ratio math below,
+            # which can silently no-op (leaving whatever scroll position the PREVIOUS
+            # chunk left behind) if the widget hasn't been laid out yet and reports
+            # width/content_height as 0 on this first render. That silent no-op is what
+            # made page navigation look like it "jumped to the last word/section typed"
+            # instead of resetting to the top of the new page.
+            scroll_container.scroll_to(y=0, animate=False)
+            return
         if target_length == 0:
             return
-        scroll_container = self.query_one("#text-scroll", VerticalScroll)
         display = self.query_one("#text-display", Static)
         width = display.size.width or scroll_container.size.width
         if width <= 0:
