@@ -39,6 +39,8 @@ class LessonScreen(Screen):
         ("ctrl+right", "next_page", "Next Page"),
         ("ctrl+left", "previous_page", "Previous Page"),
         ("ctrl+home", "book_home", "Book Start"),
+        ("ctrl+up", "jump_chunk_start", "Chunk Start"),
+        ("ctrl+down", "jump_chunk_end", "Chunk End"),
         ("ctrl+d", "show_definition", "Dictionary"),
     ]
 
@@ -160,7 +162,7 @@ class LessonScreen(Screen):
                 "Ctrl+D dictionary  ·  Ctrl+Q quit  ·  Ctrl+E menu")
         if self._book_id:
             return ("ESC pause  ·  Ctrl+R restart  ·  Ctrl+F finish  ·  "
-                    "Ctrl+←/→ page  ·  Ctrl+Home start  ·  "
+                    "Ctrl+←/→ page  ·  Ctrl+↑/↓ chunk start/end  ·  Ctrl+Home start  ·  "
                     "Ctrl+S strict  ·  Ctrl+K sound  ·  Ctrl+D dictionary  ·  "
                     "Ctrl+Q quit  ·  Ctrl+E menu")
         return base
@@ -566,6 +568,18 @@ class LessonScreen(Screen):
         if not self._book_id:
             return
         self._jump_to_book_offset(0)
+
+    def action_jump_chunk_start(self) -> None:
+        if not self._book_id or self._scorer is None:
+            return
+        self._scorer.position = 0
+        self._render_text()
+
+    def action_jump_chunk_end(self) -> None:
+        if not self._book_id or self._scorer is None:
+            return
+        self._scorer.position = len(self._scorer.target)
+        self._render_text()
 
     def action_toggle_strict_mode(self) -> None:
         app = self.app          # type: ignore[attr-defined]

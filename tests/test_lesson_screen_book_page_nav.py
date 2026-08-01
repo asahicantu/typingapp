@@ -365,3 +365,141 @@ def test_accuracy_after_page_skip_reflects_only_typed_text(tmp_path):
 
     asyncio.run(run())
     storage.close()
+
+
+def test_ctrl_up_jumps_to_start_of_current_chunk_without_scoring(tmp_path):
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            s = screen._scorer
+            # move partway into the chunk without typing (position is a plain attribute)
+            s.position = 20
+            stored_before = storage.fetch_book_progress(BOOK_ID)
+
+            screen.action_jump_chunk_start()
+            await pilot.pause()
+
+            assert screen._scorer.position == 0
+            # no keystrokes/errors recorded, no new Scorer built (same instance)
+            assert screen._scorer is s
+            assert screen._scorer.keystrokes == []
+            assert screen._scorer.error_count == 0
+            # chunk-internal navigation does not touch the persisted book offset
+            assert storage.fetch_book_progress(BOOK_ID) == stored_before
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_ctrl_down_jumps_to_end_of_current_chunk_without_scoring(tmp_path):
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            s = screen._scorer
+            chunk_len = len(s.target)
+
+            screen.action_jump_chunk_end()
+            await pilot.pause()
+
+            assert screen._scorer.position == chunk_len
+            assert screen._scorer is s
+            assert screen._scorer.keystrokes == []
+            assert screen._scorer.error_count == 0
+            assert screen._scorer.is_complete
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_ctrl_down_then_tick_extends_text_like_normal_completion(tmp_path):
+    # action_jump_chunk_end makes Scorer.is_complete true, exactly like typing to the
+    # end of a chunk normally would -- the existing _tick()/_maybe_extend_text flow
+    # must pick this up and fetch more text on the next tick with no special-casing.
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            chunk_len_before = len(screen._scorer.target)
+
+            screen.action_jump_chunk_end()
+            screen._tick()
+            await pilot.pause()
+
+            assert len(screen._scorer.target) > chunk_len_before
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_chunk_nav_is_a_no_op_outside_book_mode(tmp_path):
+    storage = Storage(tmp_path / "test.db")
+    cfg = AppConfig(content_type="custom", key_sounds=False)
+
+    class TestApp(App):
+        CSS_PATH = APP_TCSS_PATH
+
+        def __init__(self):
+            super().__init__()
+            self.config = cfg
+            self.storage = storage
+            self.lesson_engine = LessonEngine()
+            self.adaptive = AdaptiveEngine(current_level=1)
+            self.sound = SoundPlayer()
+
+        def on_mount(self):
+            self.push_screen(LessonScreen(custom_text="hello world"))
+
+    app = TestApp()
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            pos_before = screen._scorer.position
+
+            screen.action_jump_chunk_start()
+            await pilot.pause()
+            screen.action_jump_chunk_end()
+            await pilot.pause()
+
+            assert screen._scorer.position == pos_before
+
+    asyncio.run(run())
+    storage.close()
+
+
+def test_ctrl_up_down_keybindings_invoke_the_actions(tmp_path):
+    storage = _make_storage_with_book(tmp_path)
+    cfg = AppConfig(content_type="literature", selected_book_id=BOOK_ID, key_sounds=False)
+    app = _make_app(storage, cfg)
+
+    async def run():
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            screen = app.screen
+            chunk_len = len(screen._scorer.target)
+
+            await pilot.press("ctrl+down")
+            await pilot.pause()
+            assert screen._scorer.position == chunk_len
+
+            await pilot.press("ctrl+up")
+            await pilot.pause()
+            assert screen._scorer.position == 0
+
+    asyncio.run(run())
+    storage.close()
