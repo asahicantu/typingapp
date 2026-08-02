@@ -120,6 +120,7 @@ Screen {
     margin: 1 0;
     height: 1fr;
     max-height: 60%;
+    min-height: 5;
 }
 
 #text-display {
@@ -131,11 +132,18 @@ Screen {
     padding: 0 2;
     margin: 0 0 1 0;
     height: auto;
-    max-height: 30%;
+    max-height: 20%;
 }
 
 #dictionary-panel:focus {
     border: tall #43b0f1;
+}
+
+#dictionary-panel.dictionary-panel-empty {
+    border: none;
+    height: 0;
+    padding: 0;
+    margin: 0;
 }
 
 #dictionary-panel-content {

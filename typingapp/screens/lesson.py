@@ -209,6 +209,8 @@ class LessonScreen(Screen):
     def _render_dictionary_panel(self) -> None:
         content = self.query_one("#dictionary-panel-content", Static)
         content.update(self._dictionary_definition_markup)
+        panel = self.query_one("#dictionary-panel")
+        panel.set_class(not self._dictionary_definition_markup, "dictionary-panel-empty")
 
     def _persist_book_progress(self) -> None:
         if not self._book_id or self._scorer is None:

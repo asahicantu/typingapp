@@ -409,6 +409,17 @@ def test_ctrl_down_jumps_to_end_of_current_chunk_without_scoring(tmp_path):
             chunk_len = len(s.target)
 
             screen.action_jump_chunk_end()
+            # Stop the tick timer before the assertions run -- the background 0.25s
+            # timer's _tick()/_maybe_extend_text() can otherwise fire during
+            # pilot.pause() (observed under full-suite load) and extend the chunk,
+            # flipping is_complete back to False out from under this test. That
+            # tick-driven extension is real, correct behavior -- it's deliberately
+            # exercised by the sibling test
+            # test_ctrl_down_then_tick_extends_text_like_normal_completion -- this
+            # test just needs to observe the state immediately after the jump,
+            # before the timer gets a chance to run.
+            if screen._timer:
+                screen._timer.stop()
             await pilot.pause()
 
             assert screen._scorer.position == chunk_len
